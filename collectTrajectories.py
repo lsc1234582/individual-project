@@ -56,6 +56,30 @@ def resetMicoState(client_ID, joint_handles):
     vrep.simxSynchronousTrigger(client_ID);
     print('Mico state reset')
 
+def getCurrentState(client_ID, joint_handles, gripper_handle):
+    # obtain first state
+    for i in range(6):
+        ret, current_vel[i] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[i], 2012,
+                vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, current_vel[i] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[i], 2012,
+                    vrep.simx_opmode_buffer)
+        ret, joint_angles[i] = vrep.simxGetJointPosition(client_ID, joint_handles[i], vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, joint_angles[i] = vrep.simxGetJointPosition(client_ID, joint_handles[i], vrep.simx_opmode_buffer)
+    ret, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_buffer)
+    while ret != vrep.simx_return_ok:
+        ret, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_buffer)
+    ret, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_buffer)
+    while ret != vrep.simx_return_ok:
+        ret, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_buffer)
+    gripper_pos = np.array(gripper_pos)
+    gripper_orient = np.array(gripper_orient)
+
+    return np.concatenate([current_vel, joint_angles, gripper_pos, gripper_orient])
+
+MAX_JOINT_VELOCITY = 1.0
+
 if __name__ == '__main__':
     if len(sys.argv) < 3:
         print('Format: collectTrajectories.py episode_length num_episodes [seed]', file=sys.stderr)
@@ -92,19 +116,19 @@ if __name__ == '__main__':
             current_vel = np.array([0, 0, 0, 0, 0, 0], dtype='float')
             joint_angles = np.array([0, 0, 0, 0, 0, 0], dtype='float')
 
-            # obtain first state
+            # set up datastreams
             for i in range(6):
-                _, current_vel[i] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[i], 2012, vrep.simx_opmode_blocking)
-                _, joint_angles[i] = vrep.simxGetJointPosition(client_ID, joint_handles[i], vrep.simx_opmode_blocking)
-            _, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_blocking)
-            _, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_blocking)
-            gripper_pos = np.array(gripper_pos)
-            gripper_orient = np.array(gripper_orient)
+                _, current_vel[i] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[i], 2012,
+                        vrep.simx_opmode_streaming)
+                _, joint_angles[i] = vrep.simxGetJointPosition(client_ID, joint_handles[i], vrep.simx_opmode_streaming)
+            _, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_streaming)
+            _, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_streaming)
 
-            current_state = np.concatenate([current_vel, joint_angles, gripper_pos, gripper_orient])
+            # obtain first state
+            current_state = getCurrentState(client_ID, joint_handles, gripper_handle)
 
             for step in range(eps_length):
-                action = generateRandomVel(2)
+                action = generateRandomVel(MAX_JOINT_VELOCITY)
                 T_in = np.concatenate([current_state, action])
 
                 current_vel += action
@@ -117,15 +141,7 @@ if __name__ == '__main__':
                 # make sure all commands are exeucted
                 vrep.simxGetPingTime(client_ID)
                 # obtain next state
-                for i in range(6):
-                    _, current_vel[i] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[i], 2012, vrep.simx_opmode_blocking)
-                    _, joint_angles[i] = vrep.simxGetJointPosition(client_ID, joint_handles[i], vrep.simx_opmode_blocking)
-                _, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_blocking)
-                _, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_blocking)
-                gripper_pos = np.array(gripper_pos)
-                gripper_orient = np.array(gripper_orient)
-
-                next_state = np.concatenate([current_vel, joint_angles, gripper_pos, gripper_orient])
+                next_state = getCurrentState(client_ID, joint_handles, gripper_handle)
                 T_out = next_state - current_state
                 T_ins.append(T_in[np.newaxis, :])
                 T_outs.append(T_out[np.newaxis, :])
@@ -133,12 +149,19 @@ if __name__ == '__main__':
                 #pprint.pprint(T_in)
                 #print("T_out: ")
                 #pprint.pprint(T_out)
-                print("gripper_pos")
-                pprint.pprint(gripper_pos)
+                #print("gripper_pos")
+                #pprint.pprint(next_state[-6:-3])
 
                 # proceed to next state
                 current_state = next_state[:]
-                time.sleep(0.5)
+
+            # tear down datastreams
+            for i in range(6):
+                _, _ = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[i], 2012, vrep.simx_opmode_discontinue)
+                _, _ = vrep.simxGetJointPosition(client_ID, joint_handles[i],
+                        vrep.simx_opmode_discontinue)
+            _, _ = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_discontinue)
+            _, _ = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_discontinue)
 
             # Reset Mico State
             vrep.simxRemoveModel(client_ID, model_base_handle, vrep.simx_opmode_blocking)
