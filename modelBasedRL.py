@@ -1,111 +1,142 @@
 #! /usr/bin/python3
-# Copyright 2006-2017 Coppelia Robotics GmbH. All rights reserved.
-# marc@coppeliarobotics.com
-# www.coppeliarobotics.com
-#
-# -------------------------------------------------------------------
-# THIS FILE IS DISTRIBUTED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
-# WARRANTY. THE USER WILL USE IT AT HIS/HER OWN RISK. THE ORIGINAL
-# AUTHORS AND COPPELIA ROBOTICS GMBH WILL NOT BE LIABLE FOR DATA LOSS,
-# DAMAGES, LOSS OF PROFITS OR ANY OTHER KIND OF LOSS WHILE USING OR
-# MISUSING THIS SOFTWARE.
-#
-# You are free to use/modify/distribute this file for whatever purpose!
-# -------------------------------------------------------------------
-#
-# This file was automatically created for V-REP release V3.4.0 rev. 1 on April 5th 2017
-
-# Make sure to have the server side running in V-REP:
-# in a child script of a V-REP scene, add following command
-# to be executed just once, at simulation start:
-#
-# simExtRemoteApiStart(19999)
-#
-# then start simulation, and run this program.
-#
-# IMPORTANT: for each successful call to simxStart, there
-# should be a corresponding call to simxFinish at the end!
-import random
+import argparse
+import logging
 import numpy as np
+import os
+import random
 import sys
-import time
+import vrep
 from keras.models import Sequential
 from keras.models import load_model
-from keras.layers import Dense, Activation
+from keras.layers import BatchNormalization, Dense
+from keras.callbacks import TensorBoard
+from common import *
 
-try:
-    import vrep
-except:
-    print ('--------------------------------------------------------------')
-    print ('"vrep.py" could not be imported. This means very probably that')
-    print ('either "vrep.py" or the remoteApi library could not be found.')
-    print ('Make sure both are in the same folder as this file,')
-    print ('or appropriately adjust the file "vrep.py"')
-    print ('--------------------------------------------------------------')
-    print ('')
-
-
-def generateRandomVel(max_vel):
-    return np.array([random.random() * max_vel * 2 - max_vel for _ in range(6)])
-
-def getCost(state, target_pos):
-    """
-        Euclidean distance between gripper position and target position.
-    """
-    gripper_pos = state[-6: -3]
-    #print('target_pos')
-    #print(target_pos)
-    #print('gripper_pos')
-    #print(gripper_pos)
-    return np.sqrt(np.sum(np.square(gripper_pos - target_pos)))
-
-def resetMicoState(client_ID, joint_handles):
-    for i in range(6):
-        vrep.simxSetJointTargetPosition(client_ID, joint_handles[i], np.pi, vrep.simx_opmode_blocking)
-    vrep.simxSynchronousTrigger(client_ID);
-    time.sleep(1.0)
-    for i in range(6):
-        vrep.simxSetJointTargetVelocity(client_ID, joint_handles[i], 0, vrep.simx_opmode_blocking)
-    vrep.simxSynchronousTrigger(client_ID);
-    print('Mico state reset')
-
+T_INS_FILE = 'data/T_ins_100hz_500_200.npy'
+T_OUTS_FILE = 'data/T_outs_100hz_500_200.npy'
 
 SHORT_HOR_LENGTH = 5
 SHORT_HOR_NUM = 200
 GAMMA = 0.5
 
-if __name__ == '__main__':
-    if len(sys.argv) < 4:
-        print('Format: modelBasedRL.py episode_length num_episodes new_model(0|1) [seed]', file=sys.stderr)
-        sys.exit(-1)
-    eps_length = int(sys.argv[1])
-    num_eps = int(sys.argv[2])
-    new_model = int(sys.argv[3])
-    seed = int(sys.argv[4]) if len(sys.argv) == 5 else time.time()
-    random.seed(seed)
+DATASET_SIZE = 20000 # Max number of data points to consider
+VAL_SPLIT = 0.2
+NEW_SPLIT = 0.5      # The proportion of the training data that comes from T_new
+EPSILON = 0.1
 
-    print ('Program started')
+def get_model():
+    model = Sequential([
+            Dense(96, input_dim=24, kernel_initializer='normal', activation='relu'),
+            BatchNormalization(),
+            Dense(48, kernel_initializer='normal', activation='relu'),
+            BatchNormalization(),
+            Dense(18, kernel_initializer='normal')
+        ])
+    model.compile(loss='mse', optimizer='rmsprop')
+    return model
+
+if __name__ == '__main__':
+    arg_parser = argparse.ArgumentParser(description="Model-based Reinforcement Learning on Mico Robot Arm.")
+    arg_parser.add_argument("eps_length", type=checkPositive, help="The length of an episode; must be positive.")
+    arg_parser.add_argument("num_eps", type=checkPositive, help="Number of episodes to run; must be positive.")
+    arg_parser.add_argument("--monitor-log-file", "-m", dest="monitor_log_path", help="The path to the the\
+            Tensorboard monitor log.")
+    arg_parser.add_argument("--model-file", "-f", dest="model_file", required=True, help="The path to the file of the \
+            learned model; if --new-model is specified this is the path the new model is saved to.")
+    arg_parser.add_argument("--new-model", "-n", dest="new_model", action="store_true", help="A new model is learned \
+            and saved instead of using an existing model.")
+    arg_parser.add_argument("--overwrite-model-file", "-o", dest="overwrite_model_file", action="store_true")
+    arg_parser.add_argument("--seed", type=int, default=0)
+    arg_parser.add_argument("--log-level", dest="log_level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
+    args = arg_parser.parse_args()
+
+    log_level = getattr(logging, args.log_level.upper(), None)
+    if not isinstance(log_level, int):
+        raise ValueError("Invalid log value:{}".format(log_level))
+    logging.basicConfig(level=log_level)
+
+    if args.monitor_log_path and not os.path.exists(args.monitor_log_path):
+        logging.critical("Monitor log path {} does not exist.".format(args.monitor_log_path))
+        logging.info("Program ended")
+        sys.exit(1)
+    if args.new_model and os.path.exists(args.model_file) and not args.overwrite_model_file:
+        logging.critical("Model file {} already exists. Add flag --overwrite-model-file if want to overwrite the \
+                file".format(args.model_file))
+        logging.info("Program ended")
+        sys.exit(1)
+    elif not args.new_model and not os.path.exists(args.model_file):
+        logging.critical("Model file {} does not exist.".format(args.model_file))
+        logging.info("Program ended")
+        sys.exit(1)
+
+    random.seed(args.seed)
+
+    logging.info("Program {} started".format(arg_parser.prog))
     vrep.simxFinish(-1) # just in case, close all opened connections
     client_ID=vrep.simxStart('127.0.0.1',19997,True,True,5000,5) # Connect to V-REP
-    # load random trajectories
-    T_ins = np.load('data/T_ins.npy')
-    T_outs = np.load('data/T_outs.npy')
 
-    if new_model == 1:
+    if args.new_model:
+        # load random trajectories
+        T_ins = np.load(T_INS_FILE)
+        T_outs = np.load(T_OUTS_FILE)
+        NUM_SAMPLES = min(T_ins.shape[0], DATASET_SIZE)
+        logging.info("Dataset of size {} loaded, only {} of the total are retained".format(T_ins.shape[0],
+            NUM_SAMPLES))
+        NUM_VAL = int(NUM_SAMPLES * VAL_SPLIT)
+        NUM_TRAIN = NUM_SAMPLES - NUM_VAL
+        np.random.seed(args.seed)
+        np.random.shuffle(T_ins)
+        np.random.seed(args.seed)
+        np.random.shuffle(T_outs)
+        T_ins_train = T_ins[:NUM_TRAIN]
+        T_outs_train = T_outs[:NUM_TRAIN]
+        T_ins_train_mean = np.mean(T_ins_train, 0)
+        T_ins_train_std = np.std(T_ins_train, 0)
+        T_outs_train_mean = np.mean(T_outs_train, 0)
+        T_outs_train_std = np.std(T_outs_train, 0)
+        # save training set stats
+        np.save(T_INS_FILE + "_train_mean.npy", T_ins_train_mean)
+        np.save(T_INS_FILE + "_train_std.npy", T_ins_train_std)
+        np.save(T_OUTS_FILE + "_train_mean.npy", T_outs_train_mean)
+        np.save(T_OUTS_FILE + "_train_std.npy", T_outs_train_std)
+
+        T_ins_train_norm = standardise(T_ins_train, T_ins_train_mean, T_ins_train_std)
+        T_outs_train_norm = standardise(T_outs_train, T_outs_train_mean, T_outs_train_std)
+
+        T_ins_val = T_ins[NUM_TRAIN: NUM_TRAIN + NUM_VAL]
+        T_outs_val = T_outs[NUM_TRAIN: NUM_TRAIN + NUM_VAL]
+        T_ins_val_norm = standardise(T_ins_val, T_ins_train_mean, T_ins_train_std)
+        T_outs_val_norm = standardise(T_outs_val, T_outs_train_mean, T_outs_train_std)
+        logging.info("Random trajectories loaded")
         # construct and compile T_model
-        T_model = Sequential([
-            Dense(32, input_dim=18, kernel_initializer='normal'),
-            Activation('relu'),
-            Dense(12, kernel_initializer='normal'),
-            Activation('linear')
-            ])
-        T_model.compile(optimizer='sgd', loss='mse')
+        T_model = get_model()
+        # pretrain model on old trajectories
+        # add zero-mean gaussian noise to training data to make the model more robust
+        X = T_ins_train_norm + np.random.normal(0, 0.05, T_ins_train_norm.shape)
+        y = T_outs_train_norm + np.random.normal(0, 0.05, T_outs_train_norm.shape)
+        if args.monitor_log_path:
+            # monitor training
+            monitor_log_iter_path = args.monitor_log_path + "/PRE"
+            if not os.path.exists(monitor_log_iter_path):
+                os.mkdir(monitor_log_iter_path)
+            tf_board_monitor = TensorBoard(log_dir=monitor_log_iter_path, histogram_freq=1, batch_size=128,
+                    write_graph=True, write_grads=True, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)
+            # train T_model
+            T_model.fit(X, y, batch_size=128, epochs=100, validation_data=(T_ins_val_norm, T_outs_val_norm), callbacks=[tf_board_monitor])
+        else:
+            # train T_model
+            T_model.fit(X, y, batch_size=128, epochs=100, validation_data=(T_ins_val_norm, T_outs_val_norm))
     else:
+        # load training set stats
+        T_ins_train_mean = np.load(T_INS_FILE + "_train_mean.npy")
+        T_ins_train_std = np.load(T_INS_FILE + "_train_std.npy")
+        T_outs_train_mean = np.load(T_OUTS_FILE + "_train_mean.npy")
+        T_outs_train_std = np.load(T_OUTS_FILE + "_train_std.npy")
         # load model
-        T_model = load_model('model/T_model.h5')
+        T_model = load_model(args.model_file)
 
     if client_ID!=-1:
-        print ('Connected to remote API server')
+        logging.info('Connected to remote API server')
 
         # enable the synchronous mode on the client:
         vrep.simxSynchronous(client_ID,True)
@@ -115,44 +146,60 @@ if __name__ == '__main__':
         # start the simulation:
         vrep.simxStartSimulation(client_ID, vrep.simx_opmode_blocking)
 
-        for i in range(num_eps):
-            print("%d th iteration" % (i))
+        # init new trajectories
+        T_new_ins_list = []
+        T_new_outs_list = []
+
+        for i in range(args.num_eps):
+            logging.info("{}th iteration".format(i))
+            if args.monitor_log_path:
+                monitor_log_iter_path = args.monitor_log_path + "/ITER_{}".format(i)
+                if not os.path.exists(monitor_log_iter_path):
+                    os.mkdir(monitor_log_iter_path)
             # get handles
             joint_handles = [-1, -1, -1, -1, -1, -1]
             for i in range(6):
                 _, joint_handles[i] = vrep.simxGetObjectHandle(client_ID, 'Mico_joint' + str(i+1),vrep.simx_opmode_blocking)
-
             _, gripper_handle = vrep.simxGetObjectHandle(client_ID, 'MicoHand', vrep.simx_opmode_blocking)
             _, target_handle = vrep.simxGetObjectHandle(client_ID, 'Target', vrep.simx_opmode_blocking)
+
             current_vel = np.array([0, 0, 0, 0, 0, 0], dtype='float')
-            if new_model == 1:
-                # train T_model
-                T_model.fit(T_ins, T_outs, batch_size=32, epochs=10)
-            # obtain first state
+            joint_angles = np.array([0, 0, 0, 0, 0, 0], dtype='float')
+
+            # set up datastreams
             for i in range(6):
-                _, current_vel[i] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[i], 2012, vrep.simx_opmode_blocking)
-            _, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_blocking)
-            _, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_blocking)
+                _, current_vel[i] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[i], 2012,
+                        vrep.simx_opmode_streaming)
+                _, joint_angles[i] = vrep.simxGetJointPosition(client_ID, joint_handles[i], vrep.simx_opmode_streaming)
+            _, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_streaming)
+            _, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_streaming)
+
+            # destroy dummy arrays for setting up the datastream
+            del current_vel, joint_angles, gripper_pos, gripper_orient
+
+            # obtain first state
+            current_state = getCurrentState(client_ID, joint_handles, gripper_handle)
+
+            # obtain target pos
             _, target_pos = vrep.simxGetObjectPosition(client_ID, target_handle, -1, vrep.simx_opmode_blocking)
-            gripper_pos = np.array(gripper_pos)
-            gripper_orient = np.array(gripper_orient)
-            target_pos = np.array(target_pos)
-            current_state = np.concatenate([current_vel, gripper_pos, gripper_orient])
-            for step in range(eps_length):
+
+            for step in range(args.eps_length):
                 # select best action through random sampling
                 min_trajectory_cost = float('inf')
-                opt_action = generateRandomVel(1)
+                opt_action = generateRandomVel(MAX_JOINT_VELOCITY)
                 for _ in range(SHORT_HOR_NUM):
                     action_trace = []
                     trajectory_cost = 0
-                    state = current_state[:]
+                    state = np.copy(current_state)
                     for short_step in range(SHORT_HOR_LENGTH):
-                        action = generateRandomVel(2)
+                        action = generateRandomVel(MAX_JOINT_VELOCITY)
                         action_trace.append(action)
                         T_in = np.concatenate([state, action])
-                        T_out = T_model.predict(np.reshape(T_in, (1, -1)), batch_size=1)
+                        T_in = standardise(T_in, T_ins_train_mean, T_ins_train_std)
+                        T_out = T_model.predict(np.reshape(T_in, (1, -1)))
+                        T_out = invStandardise(T_out, T_outs_train_mean, T_outs_train_std)
                         state += T_out.flatten()
-                        cost = getCost(state, target_pos)
+                        cost = getCost(state[-6:-3], target_pos)
                         trajectory_cost += cost * (GAMMA ** short_step)
                         #print('T_in')
                         #print(T_in)
@@ -165,34 +212,88 @@ if __name__ == '__main__':
                         opt_action = action_trace[0]
 
                 # execute one-step optimal action
-                current_vel += opt_action
+                current_vel = current_state[:6] + opt_action
+                vrep.simxPauseCommunication(client_ID, 1);
                 for i in range(6):
                     vrep.simxSetJointTargetVelocity(client_ID, joint_handles[i], current_vel[i],
-                            vrep.simx_opmode_blocking)
+                            vrep.simx_opmode_oneshot)
+                vrep.simxPauseCommunication(client_ID, 0);
                 vrep.simxSynchronousTrigger(client_ID);
-
+                vrep.simxSynchronousTrigger(client_ID);
+                # make sure all commands are exeucted
+                vrep.simxGetPingTime(client_ID)
                 # obtain next state
-                for i in range(6):
-                    _, current_vel[i] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[i], 2012, vrep.simx_opmode_blocking)
-                _, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_blocking)
-                _, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_blocking)
-                gripper_pos = np.array(gripper_pos)
-                gripper_orient = np.array(gripper_orient)
-                next_state = np.concatenate([current_vel, gripper_pos, gripper_orient])
+                next_state = getCurrentState(client_ID, joint_handles, gripper_handle)
 
-                # enrich trajectory dataset
-                T_in = np.concatenate([current_state, opt_action])
-                T_out = next_state - current_state
-                T_ins = np.concatenate([T_ins, T_in[np.newaxis, :]])
-                T_outs = np.concatenate([T_outs, T_out[np.newaxis, :]])
+                if args.new_model:
+                    # enrich trajectory dataset
+                    T_in = np.concatenate([current_state, opt_action])
+                    T_out = next_state - current_state
+                    T_new_ins_list.append(T_in[np.newaxis, :])
+                    T_new_outs_list.append(T_out[np.newaxis, :])
 
                 # proceed to next state
                 current_state = next_state[:]
 
-            # Reset Mico State
+            if args.new_model:
+                # combine new and old trajectories
+                T_new_ins = np.concatenate(T_new_ins_list)
+                T_new_outs = np.concatenate(T_new_outs_list)
+                T_new_ins_mean = np.mean(T_new_ins, 0)
+                T_new_ins_std = np.std(T_new_ins, 0)
+                T_new_outs_mean = np.mean(T_new_outs, 0)
+                T_new_outs_std = np.std(T_new_outs, 0)
+                ins_mean_mse = mse(T_ins_train_mean, T_new_ins_mean)
+                ins_std_mse = mse(T_ins_train_std, T_new_ins_std)
+                outs_mean_mse = mse(T_outs_train_mean, T_new_outs_mean)
+                outs_std_mse = mse(T_outs_train_std, T_new_outs_std)
+                if ins_mean_mse >= EPSILON or ins_std_mse >= EPSILON or outs_mean_mse >= EPSILON or outs_std_mse >= EPSILON:
+                    logging.warn("Significant training distribution shift")
+                    logging.debug("ins_mean_mse: {:.3} ins_std_mse: {:.3} outs_mean_mse: {:.3} outs_std_mse:\
+                            {:.3}".format(ins_mean_mse, ins_std_mse, outs_mean_mse, outs_std_mse))
+
+                T_new_ins = standardise(T_new_ins, T_ins_train_mean, T_ins_train_std)
+                T_new_outs = standardise(T_new_outs, T_outs_train_mean, T_outs_train_std)
+                NUM_TRAIN_NEW = min(int(NUM_TRAIN * NEW_SPLIT), T_new_ins.shape[0])
+                NUM_TRAIN_OLD = NUM_TRAIN - NUM_TRAIN_NEW
+
+                np.random.seed(args.seed)
+                np.random.shuffle(T_new_ins)
+                np.random.seed(args.seed)
+                np.random.shuffle(T_new_outs)
+                np.random.seed(args.seed)
+                np.random.shuffle(T_ins_train_norm)
+                np.random.seed(args.seed)
+                np.random.shuffle(T_outs_train_norm)
+
+                X = np.concatenate([T_new_ins[:NUM_TRAIN_NEW], T_ins_train_norm[:NUM_TRAIN_OLD]])
+                y = np.concatenate([T_new_outs[:NUM_TRAIN_NEW], T_outs_train_norm[:NUM_TRAIN_OLD]])
+
+                # add zero-mean gaussian noise
+                X += np.random.normal(0, 0.05, X.shape)
+                y += np.random.normal(0, 0.05, y.shape)
+
+                if args.monitor_log_path:
+                    # monitor training
+                    tf_board_monitor = TensorBoard(log_dir=monitor_log_iter_path, histogram_freq=1, batch_size=128,
+                            write_graph=True, write_grads=True, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)
+                    # train T_model
+                    T_model.fit(X, y, batch_size=128, epochs=100, validation_data=(T_ins_val_norm, T_outs_val_norm), callbacks=[tf_board_monitor])
+                else:
+                    # train T_model
+                    T_model.fit(X, y, batch_size=128, epochs=100, validation_data=(T_ins_val_norm, T_outs_val_norm))
+
+            # tear down datastreams
+            for i in range(6):
+                _, _ = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[i], 2012, vrep.simx_opmode_discontinue)
+                _, _ = vrep.simxGetJointPosition(client_ID, joint_handles[i],
+                        vrep.simx_opmode_discontinue)
+            _, _ = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_discontinue)
+            _, _ = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_discontinue)
+
+            # reset Mico State
             vrep.simxRemoveModel(client_ID, model_base_handle, vrep.simx_opmode_blocking)
             _, model_base_handle = vrep.simxLoadModel(client_ID, 'models/robots/non-mobile/MicoRobot.ttm', 0, vrep.simx_opmode_blocking)
-            vrep.simxSynchronousTrigger(client_ID);
 
         # stop the simulation:
         vrep.simxStopSimulation(client_ID, vrep.simx_opmode_blocking)
@@ -201,9 +302,9 @@ if __name__ == '__main__':
 
         # Now close the connection to V-REP:
         vrep.simxFinish(client_ID)
+        if args.new_model:
+            T_model.save(args.model_file)
     else:
-        print ('Failed connecting to remote API server')
+        logging.critical("Failed connecting to remote API server")
 
-    if new_model == 1:
-        T_model.save('model/T_model.h5')
-    print ('Program ended')
+    logging.info('Program ended')

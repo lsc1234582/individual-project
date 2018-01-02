@@ -30,6 +30,7 @@ import pprint
 import numpy as np
 import sys
 import time
+from common import generateRandomVel, getCurrentState, MAX_JOINT_VELOCITY
 
 try:
     import vrep
@@ -41,44 +42,6 @@ except:
     print ('or appropriately adjust the file "vrep.py"')
     print ('--------------------------------------------------------------')
     print ('')
-
-
-def generateRandomVel(max_vel):
-    return np.array([random.random() * max_vel * 2 - max_vel for _ in range(6)])
-
-def resetMicoState(client_ID, joint_handles):
-    for i in range(6):
-        vrep.simxSetJointTargetPosition(client_ID, joint_handles[i], np.pi, vrep.simx_opmode_blocking)
-    vrep.simxSynchronousTrigger(client_ID);
-    time.sleep(1.0)
-    for i in range(6):
-        vrep.simxSetJointTargetVelocity(client_ID, joint_handles[i], 0, vrep.simx_opmode_blocking)
-    vrep.simxSynchronousTrigger(client_ID);
-    print('Mico state reset')
-
-def getCurrentState(client_ID, joint_handles, gripper_handle):
-    # obtain first state
-    for i in range(6):
-        ret, current_vel[i] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[i], 2012,
-                vrep.simx_opmode_buffer)
-        while ret != vrep.simx_return_ok:
-            ret, current_vel[i] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[i], 2012,
-                    vrep.simx_opmode_buffer)
-        ret, joint_angles[i] = vrep.simxGetJointPosition(client_ID, joint_handles[i], vrep.simx_opmode_buffer)
-        while ret != vrep.simx_return_ok:
-            ret, joint_angles[i] = vrep.simxGetJointPosition(client_ID, joint_handles[i], vrep.simx_opmode_buffer)
-    ret, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_buffer)
-    while ret != vrep.simx_return_ok:
-        ret, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_buffer)
-    ret, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_buffer)
-    while ret != vrep.simx_return_ok:
-        ret, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_buffer)
-    gripper_pos = np.array(gripper_pos)
-    gripper_orient = np.array(gripper_orient)
-
-    return np.concatenate([current_vel, joint_angles, gripper_pos, gripper_orient])
-
-MAX_JOINT_VELOCITY = 1.0
 
 if __name__ == '__main__':
     if len(sys.argv) < 3:
@@ -124,6 +87,9 @@ if __name__ == '__main__':
             _, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_streaming)
             _, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_streaming)
 
+            # destroy dummy arrays for setting up the datastream
+            del current_vel, joint_angles, gripper_pos, gripper_orient
+
             # obtain first state
             current_state = getCurrentState(client_ID, joint_handles, gripper_handle)
 
@@ -131,12 +97,13 @@ if __name__ == '__main__':
                 action = generateRandomVel(MAX_JOINT_VELOCITY)
                 T_in = np.concatenate([current_state, action])
 
-                current_vel += action
+                current_vel = current_state[:6] + action
                 vrep.simxPauseCommunication(client_ID, 1);
                 for i in range(6):
                     vrep.simxSetJointTargetVelocity(client_ID, joint_handles[i], current_vel[i],
                             vrep.simx_opmode_oneshot)
                 vrep.simxPauseCommunication(client_ID, 0);
+                vrep.simxSynchronousTrigger(client_ID);
                 vrep.simxSynchronousTrigger(client_ID);
                 # make sure all commands are exeucted
                 vrep.simxGetPingTime(client_ID)
@@ -163,7 +130,7 @@ if __name__ == '__main__':
             _, _ = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_discontinue)
             _, _ = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_discontinue)
 
-            # Reset Mico State
+            # reset Mico State
             vrep.simxRemoveModel(client_ID, model_base_handle, vrep.simx_opmode_blocking)
             _, model_base_handle = vrep.simxLoadModel(client_ID, 'models/robots/non-mobile/MicoRobot.ttm', 0, vrep.simx_opmode_blocking)
 
@@ -178,7 +145,7 @@ if __name__ == '__main__':
         print ('Failed connecting to remote API server')
     T_ins = np.concatenate(T_ins)
     T_outs = np.concatenate(T_outs)
-    np.save('data/T_ins', T_ins)
-    np.save('data/T_outs', T_outs)
+    np.save('data/T_ins_100hz_%d_%d'%(eps_length, num_eps), T_ins)
+    np.save('data/T_outs_100hz_%d_%d'%(eps_length, num_eps), T_outs)
     print('Trajectories saved')
     print ('Program ended')
