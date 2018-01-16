@@ -30,7 +30,8 @@ import pprint
 import numpy as np
 import sys
 import time
-from common import generateRandomVel, getCurrentState, MAX_JOINT_VELOCITY
+from common import generateRandomVel, getCurrentState, MAX_JOINT_VELOCITY, INITIAL_CUBOID_POSITION,\
+        INITIAL_JOINT_POSITIONS
 
 try:
     import vrep
@@ -64,18 +65,29 @@ if __name__ == '__main__':
         # enable the synchronous mode on the client:
         vrep.simxSynchronous(client_ID,True)
 
-        _, model_base_handle = vrep.simxLoadModel(client_ID, 'models/robots/non-mobile/MicoRobot.ttm', 0, vrep.simx_opmode_blocking)
-
         # start the simulation:
         vrep.simxStartSimulation(client_ID, vrep.simx_opmode_blocking)
 
+        _, cuboid_handle = vrep.simxGetObjectHandle(client_ID, 'Cuboid', vrep.simx_opmode_blocking)
+        _, target_plane_handle = vrep.simxGetObjectHandle(client_ID, 'TargetPlane', vrep.simx_opmode_blocking)
+
         for i in range(num_eps):
             print("%d th iteration" % (i))
+            _, model_base_handle = vrep.simxLoadModel(client_ID, 'models/robots/non-mobile/MicoRobot.ttm', 0, vrep.simx_opmode_blocking)
             joint_handles = [-1, -1, -1, -1, -1, -1]
             for i in range(6):
                 _, joint_handles[i] = vrep.simxGetObjectHandle(client_ID, 'Mico_joint' + str(i+1),vrep.simx_opmode_blocking)
-
             _, gripper_handle = vrep.simxGetObjectHandle(client_ID, 'MicoHand', vrep.simx_opmode_blocking)
+
+            # initialise mico joint positions, cuboid orientation and cuboid position
+            vrep.simxPauseCommunication(client_ID, 1)
+            for i in range(6):
+                vrep.simxSetJointPosition(client_ID, joint_handles[i], INITIAL_JOINT_POSITIONS[i], vrep.simx_opmode_oneshot)
+            vrep.simxSetObjectOrientation(client_ID, cuboid_handle, -1, [0, 0, 0], vrep.simx_opmode_oneshot)
+            vrep.simxSetObjectPosition(client_ID, cuboid_handle, -1, INITIAL_CUBOID_POSITION, vrep.simx_opmode_oneshot)
+            vrep.simxPauseCommunication(client_ID, 0)
+            vrep.simxGetPingTime(client_ID)
+
             current_vel = np.array([0, 0, 0, 0, 0, 0], dtype='float')
             joint_angles = np.array([0, 0, 0, 0, 0, 0], dtype='float')
 
@@ -86,29 +98,33 @@ if __name__ == '__main__':
                 _, joint_angles[i] = vrep.simxGetJointPosition(client_ID, joint_handles[i], vrep.simx_opmode_streaming)
             _, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_streaming)
             _, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_streaming)
+            _, cuboid_pos = vrep.simxGetObjectPosition(client_ID, cuboid_handle, -1, vrep.simx_opmode_streaming)
+            _, target_plane_pos = vrep.simxGetObjectPosition(client_ID, target_plane_handle, -1, vrep.simx_opmode_streaming)
 
             # destroy dummy arrays for setting up the datastream
-            del current_vel, joint_angles, gripper_pos, gripper_orient
+            del current_vel, joint_angles, gripper_pos, gripper_orient, cuboid_pos, target_plane_pos
 
             # obtain first state
-            current_state = getCurrentState(client_ID, joint_handles, gripper_handle)
+            current_state = getCurrentState(client_ID, joint_handles, gripper_handle, cuboid_handle,
+                    target_plane_handle)
 
             for step in range(eps_length):
                 action = generateRandomVel(MAX_JOINT_VELOCITY)
                 T_in = np.concatenate([current_state, action])
 
                 current_vel = current_state[:6] + action
-                vrep.simxPauseCommunication(client_ID, 1);
+                vrep.simxPauseCommunication(client_ID, 1)
                 for i in range(6):
                     vrep.simxSetJointTargetVelocity(client_ID, joint_handles[i], current_vel[i],
                             vrep.simx_opmode_oneshot)
-                vrep.simxPauseCommunication(client_ID, 0);
-                vrep.simxSynchronousTrigger(client_ID);
-                vrep.simxSynchronousTrigger(client_ID);
+                vrep.simxPauseCommunication(client_ID, 0)
+                vrep.simxSynchronousTrigger(client_ID)
+                vrep.simxSynchronousTrigger(client_ID)
                 # make sure all commands are exeucted
                 vrep.simxGetPingTime(client_ID)
                 # obtain next state
-                next_state = getCurrentState(client_ID, joint_handles, gripper_handle)
+                next_state = getCurrentState(client_ID, joint_handles, gripper_handle, cuboid_handle,
+                        target_plane_handle)
                 T_out = next_state - current_state
                 T_ins.append(T_in[np.newaxis, :])
                 T_outs.append(T_out[np.newaxis, :])
@@ -116,8 +132,11 @@ if __name__ == '__main__':
                 #pprint.pprint(T_in)
                 #print("T_out: ")
                 #pprint.pprint(T_out)
-                #print("gripper_pos")
+                #print("cuboid_pos")
                 #pprint.pprint(next_state[-6:-3])
+                #print("target_plane_pos")
+                #pprint.pprint(next_state[-3:])
+                #input("Next state")
 
                 # proceed to next state
                 current_state = next_state[:]
@@ -129,10 +148,11 @@ if __name__ == '__main__':
                         vrep.simx_opmode_discontinue)
             _, _ = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_discontinue)
             _, _ = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_discontinue)
+            _, _ = vrep.simxGetObjectPosition(client_ID, cuboid_handle, -1, vrep.simx_opmode_discontinue)
+            _, _ = vrep.simxGetObjectPosition(client_ID, target_plane_handle, -1, vrep.simx_opmode_discontinue)
 
-            # reset Mico State
+            # remove Mico
             vrep.simxRemoveModel(client_ID, model_base_handle, vrep.simx_opmode_blocking)
-            _, model_base_handle = vrep.simxLoadModel(client_ID, 'models/robots/non-mobile/MicoRobot.ttm', 0, vrep.simx_opmode_blocking)
 
         # stop the simulation:
         vrep.simxStopSimulation(client_ID, vrep.simx_opmode_blocking)

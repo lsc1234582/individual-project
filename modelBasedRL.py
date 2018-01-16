@@ -12,11 +12,11 @@ from keras.layers import BatchNormalization, Dense
 from keras.callbacks import TensorBoard
 from common import *
 
-T_INS_FILE = 'data/T_ins_100hz_500_200.npy'
-T_OUTS_FILE = 'data/T_outs_100hz_500_200.npy'
+T_INS_FILE = 'data/T_ins_100hz_500_200'
+T_OUTS_FILE = 'data/T_outs_100hz_500_200'
 
 SHORT_HOR_LENGTH = 5
-SHORT_HOR_NUM = 200
+SHORT_HOR_NUM = 20
 GAMMA = 0.5
 
 DATASET_SIZE = 20000 # Max number of data points to consider
@@ -24,13 +24,16 @@ VAL_SPLIT = 0.2
 NEW_SPLIT = 0.5      # The proportion of the training data that comes from T_new
 EPSILON = 0.1
 
+BATCH_SIZE = 128
+EPOCHS = 100
+
 def get_model():
     model = Sequential([
-            Dense(96, input_dim=24, kernel_initializer='normal', activation='relu'),
+            Dense(96, input_dim=30, kernel_initializer='normal', activation='relu'),
             BatchNormalization(),
             Dense(48, kernel_initializer='normal', activation='relu'),
             BatchNormalization(),
-            Dense(18, kernel_initializer='normal')
+            Dense(24, kernel_initializer='normal')
         ])
     model.compile(loss='mse', optimizer='rmsprop')
     return model
@@ -77,8 +80,8 @@ if __name__ == '__main__':
 
     if args.new_model:
         # load random trajectories
-        T_ins = np.load(T_INS_FILE)
-        T_outs = np.load(T_OUTS_FILE)
+        T_ins = np.load(T_INS_FILE + ".npy")
+        T_outs = np.load(T_OUTS_FILE + ".npy")
         NUM_SAMPLES = min(T_ins.shape[0], DATASET_SIZE)
         logging.info("Dataset of size {} loaded, only {} of the total are retained".format(T_ins.shape[0],
             NUM_SAMPLES))
@@ -119,13 +122,13 @@ if __name__ == '__main__':
             monitor_log_iter_path = args.monitor_log_path + "/PRE"
             if not os.path.exists(monitor_log_iter_path):
                 os.mkdir(monitor_log_iter_path)
-            tf_board_monitor = TensorBoard(log_dir=monitor_log_iter_path, histogram_freq=1, batch_size=128,
-                    write_graph=True, write_grads=True, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)
+            tf_board_monitor = TensorBoard(log_dir=monitor_log_iter_path, histogram_freq=0, batch_size=BATCH_SIZE,
+                    write_graph=False, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)
             # train T_model
-            T_model.fit(X, y, batch_size=128, epochs=100, validation_data=(T_ins_val_norm, T_outs_val_norm), callbacks=[tf_board_monitor])
+            T_model.fit(X, y, batch_size=BATCH_SIZE, epochs=EPOCHS, validation_data=(T_ins_val_norm, T_outs_val_norm), callbacks=[tf_board_monitor])
         else:
             # train T_model
-            T_model.fit(X, y, batch_size=128, epochs=100, validation_data=(T_ins_val_norm, T_outs_val_norm))
+            T_model.fit(X, y, batch_size=BATCH_SIZE, epochs=EPOCHS, validation_data=(T_ins_val_norm, T_outs_val_norm))
     else:
         # load training set stats
         T_ins_train_mean = np.load(T_INS_FILE + "_train_mean.npy")
@@ -141,10 +144,11 @@ if __name__ == '__main__':
         # enable the synchronous mode on the client:
         vrep.simxSynchronous(client_ID,True)
 
-        _, model_base_handle = vrep.simxLoadModel(client_ID, 'models/robots/non-mobile/MicoRobot.ttm', 0, vrep.simx_opmode_blocking)
-
         # start the simulation:
         vrep.simxStartSimulation(client_ID, vrep.simx_opmode_blocking)
+
+        _, cuboid_handle = vrep.simxGetObjectHandle(client_ID, 'Cuboid', vrep.simx_opmode_blocking)
+        _, target_plane_handle = vrep.simxGetObjectHandle(client_ID, 'TargetPlane', vrep.simx_opmode_blocking)
 
         # init new trajectories
         T_new_ins_list = []
@@ -157,11 +161,20 @@ if __name__ == '__main__':
                 if not os.path.exists(monitor_log_iter_path):
                     os.mkdir(monitor_log_iter_path)
             # get handles
+            _, model_base_handle = vrep.simxLoadModel(client_ID, 'models/robots/non-mobile/MicoRobot.ttm', 0, vrep.simx_opmode_blocking)
             joint_handles = [-1, -1, -1, -1, -1, -1]
             for i in range(6):
                 _, joint_handles[i] = vrep.simxGetObjectHandle(client_ID, 'Mico_joint' + str(i+1),vrep.simx_opmode_blocking)
             _, gripper_handle = vrep.simxGetObjectHandle(client_ID, 'MicoHand', vrep.simx_opmode_blocking)
-            _, target_handle = vrep.simxGetObjectHandle(client_ID, 'Target', vrep.simx_opmode_blocking)
+
+            # initialise mico joint positions, cuboid orientation and cuboid position
+            vrep.simxPauseCommunication(client_ID, 1)
+            for i in range(6):
+                vrep.simxSetJointPosition(client_ID, joint_handles[i], INITIAL_JOINT_POSITIONS[i], vrep.simx_opmode_oneshot)
+            vrep.simxSetObjectOrientation(client_ID, cuboid_handle, -1, [0, 0, 0], vrep.simx_opmode_oneshot)
+            vrep.simxSetObjectPosition(client_ID, cuboid_handle, -1, INITIAL_CUBOID_POSITION, vrep.simx_opmode_oneshot)
+            vrep.simxPauseCommunication(client_ID, 0)
+            vrep.simxGetPingTime(client_ID)
 
             current_vel = np.array([0, 0, 0, 0, 0, 0], dtype='float')
             joint_angles = np.array([0, 0, 0, 0, 0, 0], dtype='float')
@@ -173,15 +186,15 @@ if __name__ == '__main__':
                 _, joint_angles[i] = vrep.simxGetJointPosition(client_ID, joint_handles[i], vrep.simx_opmode_streaming)
             _, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_streaming)
             _, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_streaming)
+            _, cuboid_pos = vrep.simxGetObjectPosition(client_ID, cuboid_handle, -1, vrep.simx_opmode_streaming)
+            _, target_plane_pos = vrep.simxGetObjectPosition(client_ID, target_plane_handle, -1, vrep.simx_opmode_streaming)
 
             # destroy dummy arrays for setting up the datastream
-            del current_vel, joint_angles, gripper_pos, gripper_orient
+            del current_vel, joint_angles, gripper_pos, gripper_orient, cuboid_pos, target_plane_pos
 
             # obtain first state
-            current_state = getCurrentState(client_ID, joint_handles, gripper_handle)
-
-            # obtain target pos
-            _, target_pos = vrep.simxGetObjectPosition(client_ID, target_handle, -1, vrep.simx_opmode_blocking)
+            current_state = getCurrentState(client_ID, joint_handles, gripper_handle, cuboid_handle,
+                    target_plane_handle)
 
             for step in range(args.eps_length):
                 # select best action through random sampling
@@ -199,7 +212,7 @@ if __name__ == '__main__':
                         T_out = T_model.predict(np.reshape(T_in, (1, -1)))
                         T_out = invStandardise(T_out, T_outs_train_mean, T_outs_train_std)
                         state += T_out.flatten()
-                        cost = getCost(state[-6:-3], target_pos)
+                        cost = getCost(state)
                         trajectory_cost += cost * (GAMMA ** short_step)
                         #print('T_in')
                         #print(T_in)
@@ -223,7 +236,8 @@ if __name__ == '__main__':
                 # make sure all commands are exeucted
                 vrep.simxGetPingTime(client_ID)
                 # obtain next state
-                next_state = getCurrentState(client_ID, joint_handles, gripper_handle)
+                next_state = getCurrentState(client_ID, joint_handles, gripper_handle, cuboid_handle,
+                        target_plane_handle)
 
                 if args.new_model:
                     # enrich trajectory dataset
@@ -275,13 +289,14 @@ if __name__ == '__main__':
 
                 if args.monitor_log_path:
                     # monitor training
-                    tf_board_monitor = TensorBoard(log_dir=monitor_log_iter_path, histogram_freq=1, batch_size=128,
-                            write_graph=True, write_grads=True, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)
+                    tf_board_monitor = TensorBoard(log_dir=monitor_log_iter_path, histogram_freq=0,
+                            batch_size=BATCH_SIZE,
+                            write_graph=False, write_grads=False, write_images=False, embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)
                     # train T_model
-                    T_model.fit(X, y, batch_size=128, epochs=100, validation_data=(T_ins_val_norm, T_outs_val_norm), callbacks=[tf_board_monitor])
+                    T_model.fit(X, y, batch_size=BATCH_SIZE, epochs=EPOCHS, validation_data=(T_ins_val_norm, T_outs_val_norm), callbacks=[tf_board_monitor])
                 else:
                     # train T_model
-                    T_model.fit(X, y, batch_size=128, epochs=100, validation_data=(T_ins_val_norm, T_outs_val_norm))
+                    T_model.fit(X, y, batch_size=BATCH_SIZE, epochs=EPOCHS, validation_data=(T_ins_val_norm, T_outs_val_norm))
 
             # tear down datastreams
             for i in range(6):
@@ -290,10 +305,11 @@ if __name__ == '__main__':
                         vrep.simx_opmode_discontinue)
             _, _ = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_discontinue)
             _, _ = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_discontinue)
+            _, _ = vrep.simxGetObjectPosition(client_ID, cuboid_handle, -1, vrep.simx_opmode_discontinue)
+            _, _ = vrep.simxGetObjectPosition(client_ID, target_plane_handle, -1, vrep.simx_opmode_discontinue)
 
-            # reset Mico State
+            # remove Mico
             vrep.simxRemoveModel(client_ID, model_base_handle, vrep.simx_opmode_blocking)
-            _, model_base_handle = vrep.simxLoadModel(client_ID, 'models/robots/non-mobile/MicoRobot.ttm', 0, vrep.simx_opmode_blocking)
 
         # stop the simulation:
         vrep.simxStopSimulation(client_ID, vrep.simx_opmode_blocking)
