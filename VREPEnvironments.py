@@ -7,6 +7,9 @@ class VREPPushTaskEnvironment():
     INITIAL_CUBOID_POSITION = [0., 0.5, 0.05]
 
     def __init__(self):
+        pass
+
+    def __enter__(self):
         vrep.simxFinish(-1) # just in case, close all opened connections
         self.client_ID=vrep.simxStart('127.0.0.1',19997,True,True,5000,5) # Connect to V-REP
 
@@ -14,22 +17,16 @@ class VREPPushTaskEnvironment():
         vrep.simxSynchronous(self.client_ID,True)
         # start the simulation:
         vrep.simxStartSimulation(self.client_ID, vrep.simx_opmode_blocking)
+        return self
 
-
-    def __del__(self):
+    def __exit__(self, exception_type, exception_value, traceback):
         # stop the simulation:
         vrep.simxStopSimulation(self.client_ID, vrep.simx_opmode_blocking)
         # before closing the connection to V-REP, make sure that the last command sent out had time to arrive. You can guarantee this with (for example):
         vrep.simxGetPingTime(self.client_ID)
         # disconnect
         vrep.simxFinish(self.client_ID)
-
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exception_type, exception_value, traceback):
-        del self
+        return False
 
     def getCurrentState(self, client_ID, joint_handles, gripper_handle, cuboid_handle, target_plane_handle):
         """

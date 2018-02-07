@@ -53,7 +53,13 @@ class GaussianPolicy:
             self.session.run(param.initializer)
             self.session.run(tf.global_variables_initializer())
 
-    def __del__(self):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exception_type, exception_value, traceback):
+        self.destroy()
+
+    def destroy(self):
         self.session.close()
 
     def sampleAction(self, state):
