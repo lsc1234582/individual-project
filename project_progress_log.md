@@ -65,3 +65,34 @@ More TODOs:
 1. Clean up repo and share with Ed.
 2. Investigate and implement GPS.
 3. Consider using Pandoc for generating this log book so I can embed Latex.
+
+07/02/2018
+
+
+1. Cleaned up repository (somewhat) by having separate module files for VREPMicoPushTaskEnvironment and GaussianPolicy.
+2. Fixed broken context manager associated with VREP environment. Now all connections and resources are freed properly
+when the training process halts for whatever reason.
+3. Fixed some fatal bugs in VREPMicoPushTaskEnvironment such as the internal state is not advancing with the step()
+   function. Previous poor training results largely resulted from this.
+4. Added constraints on the collected trajectory to avoid bad training data by setting a limit on allowed max Mico joint velocity.
+5. Added a logistic function as greedy factor scheduler. (Currently the greedy factor caps at 0.95; need to explore
+   more later during hyper parameter tuning)
+6. Added a swapping mechanism for interaction with the simulator and model. Now before 100th episode the samples are
+   drawn from simulator only; after 100th episode they are drawn from simulator and trained model alternately.
+7. Added callbacks for checkpointing models, logging metrics (training and validation losses for model, training losses
+   for policy and summed rewards for each episode)
+8. Restructured how the training process data are stored by organising them into different training sessions. It will
+   be easier for later hyper parameter tuning and documenting.
+9. Updated README
+
+TODOs:
+The main task right now is to train a controller with PolicyGradient till it gets good result, then decide if we should
+try a different method like ActorCritic or GPS or something else based on how this optimally trained controller
+performs the task and how many samples as well as how much wall-clock trianing time are put into this.
+
+Before training such a controller we will first need to find a good set of parameters. In preparation for parameter
+tuning, I still need to tie a few loose ends on Thursday.
+1. The current controllers are not trained properly due to constant debugging and code change. Training a controller from start to finish and try to find more bugs and fix them before moving on.
+2. Abstract the training sessions. Move them out of the notebook and into modular python script files3.
+3. Investigate launching multiple VREP instances. It could accelerate the parameter tuning process.
+4. Keep cleaning up the repo and updating README.
