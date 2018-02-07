@@ -8,14 +8,23 @@ import tensorflow as tf
 from tensorflow.contrib.distributions import MultivariateNormalFullCovariance
 
 class GaussianPolicy:
+    def modelLoss(advantages, action_cov):
+        """
+            Return a a Refinforce loss function to be optimised
+        """
+        def loss(action_pred, action_taken):
+            loglike = -0.5 * tf.matmul(tf.square(action_taken - action_pred), tf.matrix_inverse(action_cov))
+            return -tf.reduce_mean(loglike * advantages)
+        return loss
     """
+
     self.action(6,) is sampled from self.policy,
     which is a gaussian distribution with mean as the output from self.model
     self.model takes state (24,) and produces an action mean (6,)
     TODO: Constrain self.model output?
     """
-    def __init__(self, cov=None, lr=0.05, epochs=1, batch_size=128, seed=0, model_file=None):
-        if not model_file:
+    def __init__(self, model_file, cov=None, lr=0.05, epochs=10, batch_size=128, seed=0, load_model=False):
+        if not load_model:
             self.model = Sequential([
                 #Input(shape=(24,), dtype="float32", name="state_l"),
                 Dense(256, input_shape=(24,), dtype="float32", kernel_initializer="random_normal", kernel_regularizer=keras.regularizers.l2(0.01), bias_initializer="zeros", activation="relu", name="hidden_l1"),
@@ -37,16 +46,15 @@ class GaussianPolicy:
         self.action_dist = MultivariateNormalFullCovariance(self.action_mean, self.action_cov)
         self.action_probability = self.action_dist.prob(self.action_taken)
         self.action_sample =self.action_dist.sample()
-        #self.loglike = tf.log(self.action_probability)
-        self.loglike = -0.5 * tf.matmul(tf.square(self.action_taken - self.action_mean), tf.matrix_inverse(self.action_cov))
-        self.loss = -tf.reduce_mean(self.loglike * self.advantage)
-        #self.loss = -tf.reduce_mean(self.loglike)
-        self.params_updates = tf.train.GradientDescentOptimizer(lr).minimize(self.loss, var_list=self.trainable_params)
+        # Compile policy model with modelLoss function
+        self.model.compile(loss=GaussianPolicy.modelLoss(self.advantage, self.action_cov), optimizer='rmsprop')
 
+        #params_updates = tf.train.GradientDescentOptimizer(lr).minimize(self.loss, var_list=self.trainable_params)
         self.epochs = epochs
         self.batch_size = batch_size
         self.seed = seed
         self.session = tf.Session()
+        self.model_file = model_file
 
         for param in self.trainable_params:
             #print(param.initializer)
@@ -65,39 +73,39 @@ class GaussianPolicy:
     def sampleAction(self, state):
         return self.session.run(self.action_sample, feed_dict={self.state:state, K.learning_phase():0})
 
-    def train(self, state, action_taken, advantage):
-        # Gradient ascent
-        #params_updates = []
-        #self.session.run(tf.global_variables_initializer())
-        #batch_size = self.session.run(tf.shape(self.loglike)[0], feed_dict={self.action_taken:action_taken, self.state:state})
-        #print(batch_size)
-        for train_step in range(self.epochs):
-            np.random.seed(self.seed)
-            np.random.shuffle(action_taken)
-            np.random.seed(self.seed)
-            np.random.shuffle(state)
-            np.random.seed(self.seed)
-            np.random.shuffle(advantage)
+    def train(self, state, action_taken, advantage, log_file):
+        #for train_step in range(self.epochs):
+        #    np.random.seed(self.seed)
+        #    np.random.shuffle(action_taken)
+        #    np.random.seed(self.seed)
+        #    np.random.shuffle(state)
+        #    np.random.seed(self.seed)
+        #    np.random.shuffle(advantage)
+        #    self.session.run(self.params_updates, feed_dict={self.action_taken:action_taken, self.state:state, self.advantage:advantage
+        #                                                    , K.learning_phase():1})
+        #    print("== Epoch: %d =="%(train_step))
+        #    #if train_step % 10 == 0:
+        #    loglike_vec, loss, action_prob = self.session.run([self.loglike, self.loss, self.action_probability], feed_dict={self.action_taken:action_taken, self.state:state, self.advantage:advantage
+        #                                                                            , K.learning_phase():0})
+        #    print("Log likelihood")
+        #    print(loglike_vec)
+        #    print("Loss")
+        #    print(loss)
+        #    #print("Action taken")
+        #    #print(action_taken)
+        #    print("Action prob")
+        #    print(action_prob)
+        #    print("Advantage")
+        #    #print(advantage)
+        self.model.compile(loss=GaussianPolicy.modelLoss(advantage, self.action_cov), optimizer='rmsprop')
+        self.model.fit(state, action_taken, batch_size=action_taken.shape[0], shuffle=False, epochs=self.epochs,
+                callbacks=[keras.callbacks.ModelCheckpoint(self.model_file, monitor='loss', verbose=1,
+                    save_best_only=True, save_weights_only=False, mode='auto', period=10)
+                    , keras.callbacks.CSVLogger(log_file, append=True)
+                    , keras.callbacks.TerminateOnNaN()])
 
-            self.session.run(self.params_updates, feed_dict={self.action_taken:action_taken, self.state:state, self.advantage:advantage
-                                                            , K.learning_phase():1})
-            print("== Epoch: %d =="%(train_step))
-            #if train_step % 10 == 0:
-            loglike_vec, loss, action_prob = self.session.run([self.loglike, self.loss, self.action_probability], feed_dict={self.action_taken:action_taken, self.state:state, self.advantage:advantage
-                                                                                    , K.learning_phase():0})
-            print("Log likelihood")
-            print(loglike_vec)
-            print("Loss")
-            print(loss)
-            #print("Action taken")
-            #print(action_taken)
-            print("Action prob")
-            print(action_prob)
-            print("Advantage")
-            #print(advantage)
-
-    def save(self, model_file):
+    def save(self):
         """
-        Save the internal model to location model_file
+        Save the internal model to location self.model_file
         """
-        self.model.save(model_file)
+        self.model.save(self.model_file)
