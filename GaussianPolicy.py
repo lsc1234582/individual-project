@@ -23,8 +23,12 @@ class GaussianPolicy:
     self.model takes state (24,) and produces an action mean (6,)
     TODO: Constrain self.model output?
     """
-    def __init__(self, model_file, cov=None, lr=0.05, epochs=10, batch_size=128, seed=0, load_model=False):
-        if not load_model:
+    def __init__(self, model_file, cov=None, lr=0.05, epochs=10, batch_size=128, seed=0, is_load_model=False):
+        self.state = tf.placeholder(dtype=tf.float32, shape=(None, 24))
+        self.action_taken = tf.placeholder(dtype=tf.float32, shape=(None, 6))
+        self.advantage = tf.placeholder(dtype=tf.float32, shape=(None, 1))
+        self.action_cov = np.eye(6).astype("float32") / 10.0 if cov==None else cov
+        if not is_load_model:
             self.model = Sequential([
                 #Input(shape=(24,), dtype="float32", name="state_l"),
                 Dense(256, input_shape=(24,), dtype="float32", kernel_initializer="random_normal", kernel_regularizer=keras.regularizers.l2(0.01), bias_initializer="zeros", activation="relu", name="hidden_l1"),
@@ -35,19 +39,16 @@ class GaussianPolicy:
             ])
         else:
             # load an existing model
-            self.model = load_model(model_file)
-        self.trainable_params = self.model.trainable_weights
-        print(self.trainable_params)
-        self.state = tf.placeholder(dtype=tf.float32, shape=(None, 24))
-        self.action_taken = tf.placeholder(dtype=tf.float32, shape=(None, 6))
-        self.advantage = tf.placeholder(dtype=tf.float32, shape=(None, 1))
+            self.model = load_model(model_file, custom_objects={'loss': GaussianPolicy.modelLoss(self.advantage,
+                self.action_cov)})
+        self.model.compile(loss=GaussianPolicy.modelLoss(self.advantage, self.action_cov), optimizer='rmsprop')
+        #self.trainable_params = self.model.trainable_weights
+        #print(self.trainable_params)
         self.action_mean = self.model(self.state)
-        self.action_cov = np.eye(6).astype("float32") / 10.0 if cov==None else cov
         #self.action_dist = MultivariateNormalFullCovariance(self.action_mean, self.action_cov)
         #self.action_probability = self.action_dist.prob(self.action_taken)
         #self.action_sample =self.action_dist.sample()
         # Compile policy model with modelLoss function
-        self.model.compile(loss=GaussianPolicy.modelLoss(self.advantage, self.action_cov), optimizer='rmsprop')
 
         #params_updates = tf.train.GradientDescentOptimizer(lr).minimize(self.loss, var_list=self.trainable_params)
         self.epochs = epochs
