@@ -42,10 +42,10 @@ class GaussianPolicy:
         self.action_taken = tf.placeholder(dtype=tf.float32, shape=(None, 6))
         self.advantage = tf.placeholder(dtype=tf.float32, shape=(None, 1))
         self.action_mean = self.model(self.state)
-        self.action_cov = tf.constant(np.eye(6).astype("float32")) if cov==None else tf.constant(cov)
-        self.action_dist = MultivariateNormalFullCovariance(self.action_mean, self.action_cov)
-        self.action_probability = self.action_dist.prob(self.action_taken)
-        self.action_sample =self.action_dist.sample()
+        self.action_cov = np.eye(6).astype("float32") / 10.0 if cov==None else cov
+        #self.action_dist = MultivariateNormalFullCovariance(self.action_mean, self.action_cov)
+        #self.action_probability = self.action_dist.prob(self.action_taken)
+        #self.action_sample =self.action_dist.sample()
         # Compile policy model with modelLoss function
         self.model.compile(loss=GaussianPolicy.modelLoss(self.advantage, self.action_cov), optimizer='rmsprop')
 
@@ -56,22 +56,27 @@ class GaussianPolicy:
         self.session = tf.Session()
         self.model_file = model_file
 
-        for param in self.trainable_params:
-            #print(param.initializer)
-            self.session.run(param.initializer)
-            self.session.run(tf.global_variables_initializer())
+        #for param in self.trainable_params:
+        #    #print(param.initializer)
+        #    self.session.run(param.initializer)
+        #    self.session.run(tf.global_variables_initializer())
 
-    def __enter__(self):
-        return self
+    #def __enter__(self):
+    #    return self
 
-    def __exit__(self, exception_type, exception_value, traceback):
-        self.destroy()
+    #def __exit__(self, exception_type, exception_value, traceback):
+    #    self.destroy()
 
-    def destroy(self):
-        self.session.close()
+    #def destroy(self):
+    #    self.session.close()
 
     def sampleAction(self, state):
-        return self.session.run(self.action_sample, feed_dict={self.state:state, K.learning_phase():0})
+        """
+            NB: Only sample one step
+        """
+        action_mean = self.model.predict(state.reshape(1, -1))
+        return np.random.multivariate_normal(action_mean.flatten(), self.action_cov)
+        #return self.session.run(self.action_sample, feed_dict={self.state:state, K.learning_phase():0})
 
     def train(self, state, action_taken, advantage, log_file):
         #for train_step in range(self.epochs):
