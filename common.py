@@ -75,4 +75,5 @@ def checkPositive(value):
 
 MAX_JOINT_VELOCITY = 1.0
 INITIAL_JOINT_POSITIONS = [np.pi, 1.5 * np.pi, 1.5 * np.pi, np.pi, np.pi, np.pi]
-INITIAL_CUBOID_POSITION = [0.3, 0.5, 0.05]
+#INITIAL_CUBOID_POSITION = [0.3, 0.5, 0.05]
+INITIAL_CUBOID_POSITION = [0., 0.5, 0.05]

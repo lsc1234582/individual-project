@@ -15,9 +15,9 @@ from common import *
 T_INS_FILE = 'data/T_ins_100hz_500_200'
 T_OUTS_FILE = 'data/T_outs_100hz_500_200'
 
-SHORT_HOR_LENGTH = 5
+SHORT_HOR_LENGTH = 10
 SHORT_HOR_NUM = 20
-GAMMA = 0.5
+GAMMA = 0.9
 
 DATASET_SIZE = 20000 # Max number of data points to consider
 VAL_SPLIT = 0.2
@@ -27,9 +27,9 @@ EPSILON = 0.1
 BATCH_SIZE = 128
 EPOCHS = 100
 
-def get_model():
+def getModel():
     model = Sequential([
-            Dense(96, input_dim=30, kernel_initializer='normal', activation='relu'),
+            Dense(256, input_dim=30, kernel_initializer='normal', activation='relu'),
             BatchNormalization(),
             Dense(48, kernel_initializer='normal', activation='relu'),
             BatchNormalization(),
@@ -112,7 +112,7 @@ if __name__ == '__main__':
         T_outs_val_norm = standardise(T_outs_val, T_outs_train_mean, T_outs_train_std)
         logging.info("Random trajectories loaded")
         # construct and compile T_model
-        T_model = get_model()
+        T_model = getModel()
         # pretrain model on old trajectories
         # add zero-mean gaussian noise to training data to make the model more robust
         X = T_ins_train_norm + np.random.normal(0, 0.05, T_ins_train_norm.shape)
