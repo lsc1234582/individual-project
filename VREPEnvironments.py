@@ -2,7 +2,8 @@ import numpy as np
 import vrep
 
 class VREPPushTaskEnvironment():
-    MAX_JOINT_VELOCITY = 1.0
+    MAX_JOINT_VELOCITY_DELTA = 1.0
+    MAX_JOINT_VELOCITY = 8.0
     INITIAL_JOINT_POSITIONS = [np.pi, 1.5 * np.pi, 1.5 * np.pi, np.pi, np.pi, np.pi]
     INITIAL_CUBOID_POSITION = [0., 0.5, 0.05]
 
@@ -171,6 +172,7 @@ class VREPPushTaskEnvironment():
                     self.target_plane_handle)
             next_states.append(next_state)
             rewards.append(self.getRewards(next_state))
+            self.state = next_state[:]
 
         next_states = np.concatenate(next_states)
         rewards = np.array(rewards)
