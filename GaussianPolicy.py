@@ -23,7 +23,7 @@ class GaussianPolicy:
     self.model takes state (24,) and produces an action mean (6,)
     TODO: Constrain self.model output?
     """
-    def __init__(self, model_file, cov=None, lr=0.05, epochs=10, batch_size=128, seed=0, is_load_model=False):
+    def __init__(self, model_file, cov=None, lr=0.05, epochs=2, batch_size=128, seed=0, is_load_model=False):
         self.state = tf.placeholder(dtype=tf.float32, shape=(None, 24))
         self.action_taken = tf.placeholder(dtype=tf.float32, shape=(None, 6))
         self.advantage = tf.placeholder(dtype=tf.float32, shape=(None, 1))
