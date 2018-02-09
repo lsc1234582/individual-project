@@ -106,7 +106,7 @@ class GaussianPolicy:
         self.model.compile(loss=GaussianPolicy.modelLoss(advantage, self.action_cov), optimizer='rmsprop')
         self.model.fit(state, action_taken, batch_size=action_taken.shape[0], shuffle=False, epochs=self.epochs,
                 callbacks=[keras.callbacks.ModelCheckpoint(self.model_file, monitor='loss', verbose=1,
-                    save_best_only=True, save_weights_only=False, mode='auto', period=10)
+                    save_best_only=True, save_weights_only=False, mode='auto', period=self.epochs)
                     , keras.callbacks.CSVLogger(log_file, append=True)
                     , keras.callbacks.TerminateOnNaN()])
 
