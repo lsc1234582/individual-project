@@ -144,7 +144,7 @@ class VREPPushTaskEnvironment():
         """
             Return the sum of the Euclidean distance between gripper and cuboid and the Euclidean distance between cuboid and targetPlane.
         """
-        return -np.sqrt(np.sum(np.square(state[-6:-3]))) + np.sqrt(np.sum(np.square(state[-3:])))
+        return -(np.sqrt(np.sum(np.square(state[-6:-3]))) + np.sqrt(np.sum(np.square(state[-3:]))))
 
 
 
