@@ -3,9 +3,11 @@ import vrep
 
 class VREPPushTaskEnvironment():
     MAX_JOINT_VELOCITY_DELTA = 1.0
-    MAX_JOINT_VELOCITY = 8.0
+    MAX_JOINT_VELOCITY = 6.0
+    #INITIAL_JOINT_POSITIONS = [np.pi, 1.5 * np.pi, 1.5 * np.pi, np.pi, np.pi, np.pi]
+    #INITIAL_CUBOID_POSITION = [0., 0.5, 0.05]
     INITIAL_JOINT_POSITIONS = [np.pi, 1.5 * np.pi, 1.5 * np.pi, np.pi, np.pi, np.pi]
-    INITIAL_CUBOID_POSITION = [0., 0.5, 0.05]
+    INITIAL_CUBOID_POSITION = [0.3, 0.5, 0.05]
 
     def __init__(self):
         pass
