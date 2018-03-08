@@ -140,11 +140,14 @@ class VREPPushTaskEnvironment():
 
         return current_state
 
-    def getRewards(self, state):
+    def getRewards(self, state, action):
         """
             Return the sum of the Euclidean distance between gripper and cuboid and the Euclidean distance between cuboid and targetPlane.
         """
-        return -(np.sqrt(np.sum(np.square(state[-6:-3]))) + np.sqrt(np.sum(np.square(state[-3:]))))
+        return -(np.sqrt(np.sum(np.square(state[-6:-3]))) + np.sqrt(np.sum(np.square(state[-3:]))) +
+                np.sqrt(np.sum(np.square(action))))
+        #return -(np.sqrt(np.sum(np.square(action))))
+        #return -(np.sqrt(np.sum(np.square(state[:6]))))
 
 
 
@@ -158,8 +161,11 @@ class VREPPushTaskEnvironment():
         for i in range(actions.shape[0]):
             current_vel = self.state[:6] + actions[i, :]
             vrep.simxPauseCommunication(self.client_ID, 1)
-            for i in range(6):
-                vrep.simxSetJointTargetVelocity(self.client_ID, self.joint_handles[i], current_vel[i],
+            for j in range(6):
+                # Cap at max velocity
+                vel = max(-VREPPushTaskEnvironment.MAX_JOINT_VELOCITY, min(VREPPushTaskEnvironment.MAX_JOINT_VELOCITY,
+                    current_vel[j]))
+                vrep.simxSetJointTargetVelocity(self.client_ID, self.joint_handles[j], vel,
                         vrep.simx_opmode_oneshot)
             vrep.simxPauseCommunication(self.client_ID, 0)
             vrep.simxSynchronousTrigger(self.client_ID)
@@ -173,8 +179,8 @@ class VREPPushTaskEnvironment():
             next_state = self.getCurrentState(self.client_ID, self.joint_handles, self.gripper_handle, self.cuboid_handle,
                     self.target_plane_handle)
             next_states.append(next_state)
-            rewards.append(self.getRewards(next_state))
-            self.state = next_state[:]
+            rewards.append(self.getRewards(next_state, actions[i]))
+            self.state = np.copy(next_state)
 
         next_states = np.concatenate(next_states)
         rewards = np.array(rewards)
