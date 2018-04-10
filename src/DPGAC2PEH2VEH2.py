@@ -10,7 +10,11 @@ from Estimators.DPGMultiPerceptronValueEstimator import DPGMultiPerceptronValueE
 from Agents.DPGAC2Agent import DPGAC2Agent
 from Utils import SummaryWriter
 from Utils import OrnsteinUhlenbeckActionNoise
+from Utils import getModuleLogger
 from EnvironmentRunner import runEnvironmentWithAgent
+
+# Module logger
+logger = getModuleLogger(__name__)
 
 def MakeDPGAC2PEH2VEH2(session, env, args):
     # The number of states about the environment the agent can observe
@@ -29,10 +33,9 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
 
     # This implementation assumes a particular architecture for value estimator
 
-
     policy_estimator = DPGMultiPerceptronPolicyEstimator(
-            session,
-            pe_layer_shapes,
+            sess=session,
+            layer_shapes=pe_layer_shapes,
             learning_rate=args.pe_learning_rate,
             action_bound=env.action_space.high[0],
             tau=args.tau,
@@ -40,7 +43,7 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
             )
 
     value_estimator = DPGMultiPerceptronValueEstimator(
-            session,
+            sess=session,
             state_dim=observation_space_dim,
             action_dim=action_space_dim,
             h1_dim=max(1, int(args.ve_h1_multiplier * observation_space_dim)),
@@ -53,12 +56,15 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
     summary_writer = SummaryWriter(session, args.summary_dir,[
         "TotalReward",
         "AverageMaxQ",
-        "ValueEstimatorTrainLoss"
+        #"ValueEstimatorTrainLoss"
         ])
+
+    estimator_saver = tf.train.Saver(max_to_keep=args.max_estimators_to_keep)
 
     actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_space_dim))
 
     return DPGAC2Agent(
+                sess=session,
                 policy_estimator=policy_estimator,
                 value_estimator=value_estimator,
                 discount_factor=args.discount_factor,
@@ -67,7 +73,10 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
                 minibatch_size=2**args.minibatch_size_log,
                 actor_noise=actor_noise,
                 replay_buffer_size=10**args.replay_buffer_size_log,
-                summary_writer=summary_writer
+                summary_writer=summary_writer,
+                estimator_dir=args.estimator_dir,
+                estimator_saver=estimator_saver,
+                estimator_save_freq=args.estimator_save_freq
                 )
 
 
@@ -75,19 +84,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="provide arguments for DPGAC2PEH1VEH1 agent")
 
     # Agent and run parameters
-    parser.add_argument("--is-agent-learning", help="Is Agent learning", action="store_true")
-    parser.add_argument("--num-episodes", help="max num of episodes to do while training", default=500)
-    parser.add_argument("--max-episode-length", help="max length of 1 episode", default=200)
-    parser.add_argument("--pe-learning-rate", help="Policy esitmator learning rate", default=0.0001)
-    parser.add_argument("--pe-h1-multiplier", help="Policy estimator hidden layer 1 size multiplier", default=10)
-    parser.add_argument("--pe-h2-multiplier", help="Policy estimator hidden layer 2 size multiplier", default=10)
-    parser.add_argument("--ve-learning-rate", help="Value esitmator learning rate", default=0.01)
-    parser.add_argument("--ve-h1-multiplier", help="Value estimator hidden layer 1 size multiplier", default=10)
-    parser.add_argument("--ve-h2-multiplier", help="Value estimator hidden layer 2 size multiplier", default=10)
-    parser.add_argument("--discount-factor", help="discount factor for critic updates", default=0.99)
-    parser.add_argument("--tau", help="soft target update parameter", default=0.001)
-    parser.add_argument("--minibatch-size-log", help="size of minibatch for minibatch-SGD as exponent of 2", default=7)
-    parser.add_argument("--replay-buffer-size-log", help="max size of the replay buffer as exponent of 10", default=5)
+    parser.add_argument("--stop-agent-learning", help="Is Agent learning", action="store_true")
+    parser.add_argument("--num-episodes", help="max num of episodes to do while training", type=int, default=500)
+    parser.add_argument("--max-episode-length", help="max length of 1 episode", type=int, default=200)
+    parser.add_argument("--pe-learning-rate", help="Policy esitmator learning rate", type=float, default=0.0001)
+    parser.add_argument("--pe-h1-multiplier", help="Policy estimator hidden layer 1 size multiplier", type=float, default=10)
+    parser.add_argument("--pe-h2-multiplier", help="Policy estimator hidden layer 2 size multiplier", type=float, default=10)
+    parser.add_argument("--ve-learning-rate", help="Value esitmator learning rate", type=float, default=0.001)
+    parser.add_argument("--ve-h1-multiplier", help="Value estimator hidden layer 1 size multiplier", type=float, default=10)
+    parser.add_argument("--ve-h2-multiplier", help="Value estimator hidden layer 2 size multiplier", type=float, default=10)
+    parser.add_argument("--discount-factor", help="discount factor for critic updates", type=float, default=0.99)
+    parser.add_argument("--tau", help="soft target update parameter", type=float, default=0.001)
+    parser.add_argument("--minibatch-size-log", help="size of minibatch for minibatch-SGD as exponent of 2",
+            type=int, default=6)
+    parser.add_argument("--replay-buffer-size-log", help="max size of the replay buffer as exponent of 10", type=int, default=6)
 
     # Environment parameters
     parser.add_argument("--env-name", help="choose the env[VREPPushTask, Pendulum-v0]", required=True)
@@ -96,14 +106,22 @@ if __name__ == "__main__":
 
     # Other parameters
     parser.add_argument("--summary-dir", help="directory for storing tensorboard info", required=True)
+    parser.add_argument("--estimator-dir", help="directory for loading/storing estimators", required=True)
+    parser.add_argument("--new-estimator", help="if creating new estimators instead of loading old ones", action="store_true")
+    parser.add_argument("--max-estimators-to-keep", help="maximal number of estimators to keep checkpointing",
+            type=int, default=5)
+    parser.add_argument("--estimator-save-freq", help="estimator save frequency (per number of episodes)",
+            type=int, default=1)
 
-    parser.set_defaults(is_agent_learning=True)
+    parser.set_defaults(stop_agent_learning=False)
     parser.set_defaults(render_env=False)
+    parser.set_defaults(new_estimator=False)
 
     args = parser.parse_args()
 
     args.agent_name = "DPGAC2PEH2VEH2"
-    tf.logging.set_verbosity(tf.logging.INFO)
-    tf.logging.info("Starting Agent in Environment {}".format(args.agent_name, args.env_name))
+
+    logger.info("Starting Agent {} in Environment {}".format(args.agent_name, args.env_name))
     best_score = runEnvironmentWithAgent(MakeDPGAC2PEH2VEH2, args)
-    tf.logging.info("Exiting")
+    logger.info("Exiting")
+

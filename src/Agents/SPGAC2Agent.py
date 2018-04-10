@@ -2,11 +2,16 @@ import numpy as np
 import tensorflow as tf
 
 from Utils import ReplayBuffer
+from Utils import getModuleLogger
+
+# Module logger
+logger = getModuleLogger(__name__)
 
 class SPGAC2Agent(object):
 
-    def __init__(self, policy_estimator, value_estimator,
+    def __init__(self, sess, policy_estimator, value_estimator,
             discount_factor, num_episodes, max_episode_length, minibatch_size, summary_writer, replay_buffer_size=10000):
+        self._sess = sess
         self._policy_estimator = policy_estimator
         self._value_estimator = value_estimator
         self._discount_factor = discount_factor
@@ -38,8 +43,8 @@ class SPGAC2Agent(object):
         return self._best_average
 
     def act(self, observation, reward, termination, episode_num, is_learning=False):
-        #tf.logging.debug("REPLAY_BUFFER")
-        #tf.logging.debug(self._replay_buffer)
+        #logger.debug("REPLAY_BUFFER")
+        #logger.debug(self._replay_buffer)
         self._total_reward += reward
         self._step += 1
 
@@ -56,7 +61,7 @@ class SPGAC2Agent(object):
                 ):
                 self._best_average = average
 
-            tf.logging.info("Episode {}/{}, Episode reward {}, Average reward {}".format(episode_num,
+            logger.info("Episode {}/{}, Episode reward {}, Average reward {}".format(episode_num,
                 self._num_episodes, self._total_reward, average))
 
             self._summary_writer.writeSummary({"TotalReward": self._total_reward[0]}, episode_num)
@@ -107,7 +112,7 @@ class SPGAC2Agent(object):
 
         # Early stop
         if np.isnan(pe_loss):
-            tf.logging.error("Training: policy estimator loss too big/nan, stop training")
+            logger.error("Training: policy estimator loss too big/nan, stop training")
             self._stop_training = True
 
         # Some basic summary of training loss

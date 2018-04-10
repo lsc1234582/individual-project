@@ -9,7 +9,11 @@ from Estimators.SPGMultiPerceptronPolicyEstimator import SPGMultiPerceptronPolic
 from Estimators.SPGMultiPerceptronValueEstimator import SPGMultiPerceptronValueEstimator
 from Agents.SPGAC2Agent import SPGAC2Agent
 from Utils import SummaryWriter
+from Utils import getModuleLogger
 from EnvironmentRunner import runEnvironmentWithAgent
+
+# Module logger
+logger = getModuleLogger(__name__)
 
 def MakeSPGAC2PEH1VEH1(session, env, args):
     # The number of states about the environment the agent can observe
@@ -52,6 +56,7 @@ def MakeSPGAC2PEH1VEH1(session, env, args):
         ])
 
     return SPGAC2Agent(
+                sess=session,
                 policy_estimator=policy_estimator,
                 value_estimator=value_estimator,
                 discount_factor=args.discount_factor,
@@ -92,7 +97,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     args.agent_name = "SPGAC2PEH1VEH1"
-    tf.logging.set_verbosity(tf.logging.INFO)
-    tf.logging.info("Starting Agent in Environment {}".format(args.agent_name, args.env_name))
+    logger.info("Starting Agent in Environment {}".format(args.agent_name, args.env_name))
     best_score = runEnvironmentWithAgent(MakeSPGAC2PEH1VEH1, args)
-    tf.logging.info("Exiting")
+    logger.info("Exiting")

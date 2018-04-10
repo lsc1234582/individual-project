@@ -2,6 +2,11 @@ import numpy as np
 import tensorflow as tf
 import vrep
 
+from Utils import getModuleLogger
+
+# Module logger
+logger = getModuleLogger(__name__)
+
 class Box(object):
     def __init__(self, shape, low, high):
         self.shape = shape
@@ -17,7 +22,7 @@ class VREPPushTaskEnvironment(object):
     INITIAL_CUBOID_POSITION = [0.3, 0.5, 0.05]
 
     def __init__(self):
-        tf.logging.info("Creating VREPPushTaskEnvironment")
+        logger.info("Creating VREPPushTaskEnvironment")
         self.action_space = Box((6,), (-1.0,), (1.0,))
         self.observation_space = Box((24,), (-999.0,), (999.0,))
 
@@ -41,7 +46,7 @@ class VREPPushTaskEnvironment(object):
         return False
 
     def close(self):
-        tf.logging.info("Closing VREPPushTaskEnvironment")
+        logger.info("Closing VREPPushTaskEnvironment")
         # tear down datastreams
         for i in range(6):
             _, _ = vrep.simxGetObjectFloatParameter(self.client_ID, self.joint_handles[i], 2012, vrep.simx_opmode_discontinue)
@@ -315,5 +320,4 @@ def make(env_name):
     if env_name == "VREPPushTask":
         return VREPPushTaskEnvironment()
     else:
-        tf.logging.fatel("{} environment does not exist.".format(env_name))
         raise

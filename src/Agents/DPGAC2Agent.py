@@ -2,11 +2,17 @@ import numpy as np
 import tensorflow as tf
 
 from Utils import ReplayBuffer
+from Utils import getModuleLogger
+
+# Module logger
+logger = getModuleLogger(__name__)
 
 class DPGAC2Agent(object):
 
-    def __init__(self, policy_estimator, value_estimator,
-            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer, replay_buffer_size=10000):
+    def __init__(self, sess, policy_estimator, value_estimator,
+            discount_factor, num_episodes, max_episode_length, minibatch_size, replay_buffer_size, actor_noise, summary_writer,
+            estimator_dir, estimator_saver, estimator_save_freq):
+        self._sess = sess
         self._policy_estimator = policy_estimator
         self._value_estimator = value_estimator
         self._discount_factor = discount_factor
@@ -21,7 +27,7 @@ class DPGAC2Agent(object):
 
         self._step = 0
         self._total_reward = 0
-        self._average_max_q = 0
+        self._max_q = 0
         self._rewards_list = []
         self._replay_buffer = ReplayBuffer(self._replay_buffer_size)
 
@@ -35,18 +41,30 @@ class DPGAC2Agent(object):
 
         # Summary about training
         self._summary_writer = summary_writer
+        self._estimator_dir = estimator_dir
+        self._estimator_saver = estimator_saver
+        self._estimator_save_freq = estimator_save_freq
+
+    def save(self, estimator_dir, step, write_meta_graph):
+        self._estimator_saver.save(self._sess, self._estimator_dir+"/DPGAC2Agent", global_step=step, write_meta_graph=write_meta_graph)
+        logger.info("DPGAC2Agent saved")
+
+    def load(self, estimator_dir):
+        # Load estiamtor
+        self._estimator_saver.restore(self._sess, tf.train.latest_checkpoint(estimator_dir))
+        logger.info("DPGAC2Agent loaded")
 
     def score(self):
         return self._best_average
 
     def act(self, observation, reward, termination, episode_num, is_learning=False):
-        #tf.logging.debug("REPLAY_BUFFER")
-        #tf.logging.debug(self._replay_buffer)
+        #logger.debug("REPLAY_BUFFER")
+        #logger.debug(self._replay_buffer)
         self._total_reward += reward
         self._step += 1
 
         # Putting a limit on how long the a single trial can run for simplicity
-        if self._step >= self._max_episode_length:
+        if self._step > self._max_episode_length:
             termination = True
 
         if termination:
@@ -58,14 +76,13 @@ class DPGAC2Agent(object):
                 ):
                 self._best_average = average
 
-            tf.logging.info("Episode {}/{}, Episode reward {}, Average reward {}, Average Max Q {}".format(episode_num,
-                self._num_episodes, self._total_reward, average, self._average_max_q))
+            logger.info("Episode {}/{}, Episode reward {}, Average reward {}, Average Max Q {}".format(episode_num,
+                self._num_episodes, self._total_reward, average, self._max_q / float(self._step)))
 
-            self._summary_writer.writeSummary({"TotalReward": self._total_reward[0]}, episode_num)
-
-            self._summary_writer.writeSummary({"AverageMaxQ": self._average_max_q}, episode_num)
+            self._summary_writer.writeSummary({"TotalReward": self._total_reward[0],
+                "AverageMaxQ": self._max_q / float(self._step)}, episode_num)
             self._total_reward = 0.0
-            self._average_max_q = 0.0
+            self._max_q = 0.0
             self._step = 0
 
         current_state = observation.reshape(1, -1)
@@ -114,7 +131,7 @@ class DPGAC2Agent(object):
         predicted_q_value, _, ve_loss = self._value_estimator.update(
             current_state_batch, action_batch, np.reshape(y_i, (self._minibatch_size, 1)))
 
-        self._average_max_q += np.amax(predicted_q_value)
+        self._max_q += np.amax(predicted_q_value)
 
         # Update the actor policy using the sampled gradient
         a_outs = self._policy_estimator.predict(current_state_batch)
@@ -127,9 +144,9 @@ class DPGAC2Agent(object):
 
         # Early stop
         if np.isnan(ve_loss):
-            tf.logging.error("Training: value estimator loss too big/nan, stop training")
+            logger.error("Training: value estimator loss is nan, stop training")
             self._stop_training = True
 
         # Some basic summary of training loss
-        if self._step % 100 == 0:
-            self._summary_writer.writeSummary({"ValueEstimatorTrainLoss": ve_loss}, self._step)
+        #if self._step % 100 == 0:
+        #    self._summary_writer.writeSummary({"ValueEstimatorTrainLoss": ve_loss}, self._step)

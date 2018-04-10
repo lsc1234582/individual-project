@@ -13,7 +13,8 @@ class DPGMultiPerceptronPolicyEstimator(object):
     between -action_bound and action_bound
     """
 
-    def __init__(self, sess, layer_shapes, learning_rate, action_bound, tau, minibatch_size):
+    def __init__(self, sess, layer_shapes, learning_rate, action_bound, tau,
+            minibatch_size, scope="policy_estimator"):
         self._sess = sess
         self._layer_shapes = layer_shapes
         self._action_bound = action_bound
@@ -22,51 +23,70 @@ class DPGMultiPerceptronPolicyEstimator(object):
         self._minibatch_size = minibatch_size
 
         # Actor Network
-        self._inputs, self._out, self._scaled_out = self._create_actor_network()
+        self._inputs, self._out, self._scaled_out = self._create_actor_network(scope)
 
         self._network_params = tf.trainable_variables()
 
         # Target Network
-        self._target_inputs, self._target_out, self._target_scaled_out = self._create_actor_network()
+        self._target_inputs, self._target_out, self._target_scaled_out = self._create_actor_network(scope + "_target")
 
         self._target_network_params = tf.trainable_variables()[
             len(self._network_params):]
 
-        # Op for periodically updating target network with online network
-        # weights
-        self._update_target_network_params = \
-            [self._target_network_params[i].assign(tf.multiply(self._network_params[i], self._tau) +
-                                                  tf.multiply(self._target_network_params[i], 1. - self._tau))
-                for i in range(len(self._target_network_params))]
+        with tf.name_scope(scope + "_target/"):
+            # Op for periodically updating target network with online network
+            # weights
+            self._update_target_network_params = \
+                [self._target_network_params[i].assign(tf.multiply(self._network_params[i], self._tau) +
+                                                      tf.multiply(self._target_network_params[i], 1. - self._tau))
+                    for i in range(len(self._target_network_params))]
 
-        # This gradient will be provided by the critic network
-        self._action_gradient = tf.placeholder(tf.float32, [None, self._layer_shapes[-1]])
+        with tf.name_scope(scope):
+            # This gradient will be provided by the critic network
+            self._action_gradient = tf.placeholder(tf.float32, [None, self._layer_shapes[-1]], name="action_gradient")
 
-        # Combine the gradients here
-        self._unnormalized_actor_gradients = tf.gradients(
-            self._scaled_out, self._network_params, -self._action_gradient)
-        self._actor_gradients = list(map(lambda x: tf.div(x, self._minibatch_size), self._unnormalized_actor_gradients))
+            # Combine the gradients here
+            self._unnormalized_actor_gradients = tf.gradients(
+                self._scaled_out, self._network_params, -self._action_gradient)
+            self._actor_gradients = list(map(lambda x: tf.div(x, self._minibatch_size), self._unnormalized_actor_gradients))
 
-        # Optimization Op
-        self._optimize = tf.train.AdamOptimizer(self._learning_rate).\
-            apply_gradients(zip(self._actor_gradients, self._network_params))
+            # Optimization Op
+            self._optimize = tf.train.AdamOptimizer(self._learning_rate).\
+                apply_gradients(zip(self._actor_gradients, self._network_params), name="optimize")
 
         self._num_trainable_vars = len(
             self._network_params) + len(self._target_network_params)
 
-    def _create_actor_network(self):
-        inputs = tflearn.input_data(shape=(None, self._layer_shapes[0]))
-        net = inputs
-        for i in range(1, len(self._layer_shapes) - 1):
-            net = tflearn.fully_connected(net, self._layer_shapes[i])
-            net = tflearn.layers.normalization.batch_normalization(net)
-            net = tflearn.activations.relu(net)
-        # Final layer weights are init to Uniform[-3e-3, 3e-3]
-        w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
-        out = tflearn.fully_connected(
-            net, self._layer_shapes[-1], activation='tanh', weights_init=w_init)
-        # Scale output to -action_bound to action_bound
-        scaled_out = tf.multiply(out, self._action_bound)
+            #graph = tf.get_default_graph()
+
+            #self._inputs = graph.get_tensor_by_name(scope + "/inputs:0")
+            #self._scaled_out = graph.get_tensor_by_name(scope + "/scaled_out:0")
+            #self._optimize = graph.get_tensor_by_name(scope + "/optimize:0")
+            #self._action_gradient = graph.get_tensor_by_name(scope + "/action_gradient:0")
+            #self._target_inputs = graph.get_tensor_by_name(scope + "_target/inputs:0")
+            #self._target_scaled_out = graph.get_tensor_by_name(scope + "_target/scaled_out:0")
+
+            #self._network_params = tf.trainable_variables()[num_actor_vars:]
+            #self._target_network_params = tf.trainable_variables()[(len(self._network_params) + num_actor_vars):]
+            #self._update_target_network_params = []
+            #for i in range(len(self._target_network_params)):
+            #    self._update_target_network_params[i] = graph.get_tensor_by_name(
+            #            scope+"_target/update_target_network_params:{}".format(i))
+
+    def _create_actor_network(self, scope):
+        with tf.name_scope(scope):
+            inputs = tflearn.input_data(shape=(None, self._layer_shapes[0]), name="inputs")
+            net = inputs
+            for i in range(1, len(self._layer_shapes) - 1):
+                net = tflearn.fully_connected(net, self._layer_shapes[i])
+                net = tflearn.layers.normalization.batch_normalization(net)
+                net = tflearn.activations.relu(net)
+            # Final layer weights are init to Uniform[-3e-3, 3e-3]
+            w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
+            out = tflearn.fully_connected(
+                net, self._layer_shapes[-1], activation='tanh', weights_init=w_init, name="out")
+            # Scale output to -action_bound to action_bound
+            scaled_out = tf.multiply(out, self._action_bound, name="scaled_out")
         return inputs, out, scaled_out
 
     def update(self, inputs, a_gradient):
@@ -83,11 +103,13 @@ class DPGMultiPerceptronPolicyEstimator(object):
         })
 
     def predict_target(self, inputs):
+        tflearn.is_training(False, self._sess)
         return self._sess.run(self._target_scaled_out, feed_dict={
             self._target_inputs: inputs
         })
 
     def update_target_network(self):
+        tflearn.is_training(False, self._sess)
         self._sess.run(self._update_target_network_params)
 
     def get_num_trainable_vars(self):

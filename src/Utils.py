@@ -1,4 +1,5 @@
 import collections
+import logging
 import random
 import numpy as np
 import tensorflow as tf
@@ -10,6 +11,28 @@ def featurize_state(state, scaler):
     """
     scaled = scaler.transform(state)
     return scaled
+
+def getModuleLogger(module_name):
+    """
+    Universal configuration of logger across all modules.
+    """
+    logger = logging.getLogger(module_name)
+    logger.setLevel(logging.DEBUG)
+    # Create formatter and add it to the handlers
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    # Create handlers
+    fh = logging.FileHandler("run_info.log")
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(formatter)
+    fdh = logging.FileHandler("run_debug.log")
+    fdh.setLevel(logging.DEBUG)
+    fdh.setFormatter(formatter)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.ERROR)
+    logger.addHandler(fh)
+    logger.addHandler(fdh)
+    logger.addHandler(ch)
+    return logger
 
 class ReplayBuffer(object):
 
@@ -67,9 +90,10 @@ class SummaryWriter(object):
         self._sess = sess
         self._summary_vars = {}
         self._writer = tf.summary.FileWriter(summary_dir, sess.graph)
-        for var_name in var_names:
-            self._summary_vars[var_name] = tf.Variable(0.)
-            tf.summary.scalar(var_name, self._summary_vars[var_name])
+        with tf.name_scope("summary"):
+            for var_name in var_names:
+                self._summary_vars[var_name] = tf.Variable(0., trainable=False, name=var_name)
+                tf.summary.scalar(var_name, self._summary_vars[var_name])
 
         self._summary_ops = tf.summary.merge_all()
 
