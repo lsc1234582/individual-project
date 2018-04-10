@@ -1,4 +1,5 @@
 import numpy as np
+import tensorflow as tf
 import vrep
 
 class Box(object):
@@ -16,10 +17,10 @@ class VREPPushTaskEnvironment(object):
     INITIAL_CUBOID_POSITION = [0.3, 0.5, 0.05]
 
     def __init__(self):
-        self.action_space = Box((6,), -1.0, 1.0)
-        self.observation_space = Box((24,), -999.0, 999.0)
+        tf.logging.info("Creating VREPPushTaskEnvironment")
+        self.action_space = Box((6,), (-1.0,), (1.0,))
+        self.observation_space = Box((24,), (-999.0,), (999.0,))
 
-    def __enter__(self):
         vrep.simxFinish(-1) # just in case, close all opened connections
         self.client_ID=vrep.simxStart('127.0.0.1',19997,True,True,5000,5) # Connect to V-REP
         if self.client_ID == -1:
@@ -32,9 +33,15 @@ class VREPPushTaskEnvironment(object):
 
         self._initialise()
 
+    def __enter__(self):
         return self
 
     def __exit__(self, exception_type, exception_value, traceback):
+        self.close()
+        return False
+
+    def close(self):
+        tf.logging.info("Closing VREPPushTaskEnvironment")
         # tear down datastreams
         for i in range(6):
             _, _ = vrep.simxGetObjectFloatParameter(self.client_ID, self.joint_handles[i], 2012, vrep.simx_opmode_discontinue)
@@ -51,7 +58,6 @@ class VREPPushTaskEnvironment(object):
         vrep.simxGetPingTime(self.client_ID)
         # disconnect
         vrep.simxFinish(self.client_ID)
-        return False
 
     def getCurrentState(self, client_ID, joint_handles, gripper_handle, cuboid_handle, target_plane_handle):
         """
@@ -304,3 +310,10 @@ class VREPPushTaskEnvironment(object):
         next_states = np.concatenate(next_states)
         rewards = np.array(rewards)
         return next_states, rewards
+
+def make(env_name):
+    if env_name == "VREPPushTask":
+        return VREPPushTaskEnvironment()
+    else:
+        tf.logging.fatel("{} environment does not exist.".format(env_name))
+        raise
