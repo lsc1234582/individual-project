@@ -11,7 +11,7 @@ class DPGAC2Agent(object):
 
     def __init__(self, sess, policy_estimator, value_estimator,
             discount_factor, num_episodes, max_episode_length, minibatch_size, replay_buffer_size, actor_noise, summary_writer,
-            estimator_dir, estimator_saver, estimator_save_freq):
+            estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq):
         self._sess = sess
         self._policy_estimator = policy_estimator
         self._value_estimator = value_estimator
@@ -45,8 +45,9 @@ class DPGAC2Agent(object):
         # Summary about training
         self._summary_writer = summary_writer
         self._estimator_dir = estimator_dir
-        self._estimator_saver = estimator_saver
-        self._estimator_save_freq = estimator_save_freq
+        self._estimator_saver_recent = estimator_saver_recent
+        self._estimator_saver_best = estimator_saver_best
+        self._recent_save_freq = recent_save_freq
 
     def save(self, estimator_dir, is_best=False, step=None, write_meta_graph=False):
         if write_meta_graph:
@@ -54,21 +55,21 @@ class DPGAC2Agent(object):
             logger.info("{} meta graph saved".format(self.__class__.__name__))
         else:
             if is_best:
-                self._estimator_saver.save(self._sess, "{}/best/{}".format(estimator_dir, self.__class__.__name__), global_step=step,
+                self._estimator_saver_best.save(self._sess, "{}/best/{}".format(estimator_dir, self.__class__.__name__), global_step=step,
                     write_meta_graph=False)
             else:
-                self._estimator_saver.save(self._sess, "{}/recent/{}".format(estimator_dir, self.__class__.__name__), global_step=step,
+                self._estimator_saver_recent.save(self._sess, "{}/recent/{}".format(estimator_dir, self.__class__.__name__), global_step=step,
                     write_meta_graph=False)
             logger.info("{} saved".format(self.__class__.__name__))
 
     def load(self, estimator_dir, is_best=False):
         if is_best:
             logger.info("Loading the best {}".format(self.__class__.__name__))
-            self._estimator_saver.restore(self._sess,
+            self._estimator_saver_best.restore(self._sess,
                     tf.train.latest_checkpoint("{}/best".format(estimator_dir)))
         else:
             logger.info("Loading the most recent {}".format(self.__class__.__name__))
-            self._estimator_saver.restore(self._sess,
+            self._estimator_saver_recent.restore(self._sess,
                     tf.train.latest_checkpoint("{}/recent".format(estimator_dir)))
         logger.info("{} loaded".format(self.__class__.__name__))
 
@@ -92,7 +93,9 @@ class DPGAC2Agent(object):
             average = np.mean(self._rewards_list[-self._num_rewards_to_average:])
 
             # Update episode number variable
-            tf.assign(episode_num_var, episode_num)
+            self._sess.run(tf.assign(episode_num_var, episode_num))
+
+            # Check for improvements
             if self._best_average is None or self._best_average < average:
                 self._best_average = average
                 improve_str = '*'
@@ -113,7 +116,7 @@ class DPGAC2Agent(object):
                 if improve_str == '*':
                     logger.info("Saving best agent so far")
                     self.save(self._estimator_dir, is_best=True, step=episode_num, write_meta_graph=False)
-                if (episode_num % self._estimator_save_freq == 0 or episode_num >= self._num_episodes +\
+                if (episode_num % self._recent_save_freq == 0 or episode_num >= self._num_episodes +\
                     episode_start_num - 1):
                     logger.info("Saving agent checkpoints")
                     self.save(self._estimator_dir, step=episode_num, write_meta_graph=False)
