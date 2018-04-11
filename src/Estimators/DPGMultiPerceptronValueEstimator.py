@@ -99,7 +99,6 @@ class DPGMultiPerceptronValueEstimator(object):
         return inputs, action, out
 
     def update(self, inputs, action, predicted_q_value):
-        tflearn.is_training(True, self._sess)
         return self._sess.run([self._out, self._optimize, self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,
@@ -107,26 +106,22 @@ class DPGMultiPerceptronValueEstimator(object):
         })
 
     def predict(self, inputs, action):
-        tflearn.is_training(False, self._sess)
         return self._sess.run(self._out, feed_dict={
             self._inputs: inputs,
             self._action: action
         })
 
     def predict_target(self, inputs, action):
-        tflearn.is_training(False, self._sess)
         return self._sess.run(self._target_out, feed_dict={
             self._target_inputs: inputs,
             self._target_action: action
         })
 
     def action_gradients(self, inputs, actions):
-        tflearn.is_training(True, self._sess)
         return self._sess.run(self._action_grads, feed_dict={
             self._inputs: inputs,
             self._action: actions
         })
 
     def update_target_network(self):
-        tflearn.is_training(False, self._sess)
         self._sess.run(self._update_target_network_params)

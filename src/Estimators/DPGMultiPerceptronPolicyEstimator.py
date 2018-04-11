@@ -90,26 +90,22 @@ class DPGMultiPerceptronPolicyEstimator(object):
         return inputs, out, scaled_out
 
     def update(self, inputs, a_gradient):
-        tflearn.is_training(True, self._sess)
         self._sess.run(self._optimize, feed_dict={
             self._inputs: inputs,
             self._action_gradient: a_gradient
         })
 
     def predict(self, inputs):
-        tflearn.is_training(False, self._sess)
         return self._sess.run(self._scaled_out, feed_dict={
             self._inputs: inputs
         })
 
     def predict_target(self, inputs):
-        tflearn.is_training(False, self._sess)
         return self._sess.run(self._target_scaled_out, feed_dict={
             self._target_inputs: inputs
         })
 
     def update_target_network(self):
-        tflearn.is_training(False, self._sess)
         self._sess.run(self._update_target_network_params)
 
     def get_num_trainable_vars(self):
