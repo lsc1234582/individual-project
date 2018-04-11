@@ -35,8 +35,7 @@ class VREPPushTaskEnvironment(object):
         vrep.simxSynchronous(self.client_ID,True)
         # start the simulation:
         vrep.simxStartSimulation(self.client_ID, vrep.simx_opmode_blocking)
-
-        self._initialise()
+        self._reset_yet = False
 
     def __enter__(self):
         return self
@@ -45,8 +44,7 @@ class VREPPushTaskEnvironment(object):
         self.close()
         return False
 
-    def close(self):
-        logger.info("Closing VREPPushTaskEnvironment")
+    def _tearDownDatastream(self):
         # tear down datastreams
         for i in range(6):
             _, _ = vrep.simxGetObjectFloatParameter(self.client_ID, self.joint_handles[i], 2012, vrep.simx_opmode_discontinue)
@@ -56,6 +54,11 @@ class VREPPushTaskEnvironment(object):
         _, _ = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_discontinue)
         _, _ = vrep.simxGetObjectPosition(self.client_ID, self.cuboid_handle, -1, vrep.simx_opmode_discontinue)
         _, _ = vrep.simxGetObjectPosition(self.client_ID, self.target_plane_handle, -1, vrep.simx_opmode_discontinue)
+
+    def close(self):
+        logger.info("Closing VREPPushTaskEnvironment")
+
+        #self._tearDownDatastream()
 
         # stop the simulation:
         vrep.simxStopSimulation(self.client_ID, vrep.simx_opmode_blocking)
@@ -180,8 +183,12 @@ class VREPPushTaskEnvironment(object):
 
         """
 
-        # remove Mico
-        vrep.simxRemoveModel(self.client_ID, self.model_base_handle, vrep.simx_opmode_blocking)
+        if self._reset_yet:
+            self._tearDownDatastream()
+            # remove Mico
+            vrep.simxRemoveModel(self.client_ID, self.model_base_handle, vrep.simx_opmode_blocking)
+        else:
+            self._reset_yet = True
 
         return self._initialise()
 
