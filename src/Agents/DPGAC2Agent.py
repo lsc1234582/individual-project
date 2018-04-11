@@ -23,7 +23,7 @@ class DPGAC2Agent(object):
         self._replay_buffer_size = replay_buffer_size
 
         # The number of episodes to average total reward over; used for score
-        self._num_rewards_to_average = min(50, self._num_episodes - 1)
+        self._num_rewards_to_average = min(100, self._num_episodes - 1)
 
         self._step = 0
         self._total_reward = 0
@@ -45,19 +45,24 @@ class DPGAC2Agent(object):
         self._estimator_saver = estimator_saver
         self._estimator_save_freq = estimator_save_freq
 
-    def save(self, estimator_dir, step, write_meta_graph):
-        self._estimator_saver.save(self._sess, self._estimator_dir+"/DPGAC2Agent", global_step=step, write_meta_graph=write_meta_graph)
+    def save(self, estimator_dir, name="DPGAC2Agent", step=None, write_meta_graph=False):
+        self._estimator_saver.save(self._sess, "{}/{}".format(self._estimator_dir, name), global_step=step, write_meta_graph=write_meta_graph)
         logger.info("DPGAC2Agent saved")
 
-    def load(self, estimator_dir):
+    def load(self, estimator_dir, best_estimator_name=None):
         # Load estiamtor
-        self._estimator_saver.restore(self._sess, tf.train.latest_checkpoint(estimator_dir))
+        if best_estimator_name:
+            logger.info("Loading best DPGAC2Agent")
+            self._estimator_saver.restore(self._sess, "{}/{}".format(self._estimator_dir, best_estimator_name))
+        else:
+            logger.info("Loading most recent DPGAC2Agent")
+            self._estimator_saver.restore(self._sess, tf.train.latest_checkpoint(estimator_dir))
         logger.info("DPGAC2Agent loaded")
 
     def score(self):
         return self._best_average
 
-    def act(self, observation, reward, termination, episode_num, is_learning=False):
+    def act(self, observation, reward, termination, episode_start_num, episode_num, episode_num_var, is_learning=False):
         #logger.debug("REPLAY_BUFFER")
         #logger.debug(self._replay_buffer)
         self._total_reward += reward
@@ -71,16 +76,36 @@ class DPGAC2Agent(object):
             # Record cumulative reward of trial
             self._rewards_list.append(self._total_reward)
             average = np.mean(self._rewards_list[-self._num_rewards_to_average:])
-            if (len(self._rewards_list) >= self._num_rewards_to_average
-                    and (self._best_average is None or self._best_average < average)
-                ):
+            # Update episode number variable
+            tf.assign(episode_num_var, episode_num)
+            if self._best_average is None or self._best_average < average:
                 self._best_average = average
+                improve_str = '*'
+                # Save best estimator so far
+                if is_learning:
+                    logger.info("Saving best agent so far")
+                    self.save(self._estimator_saver, name="DPGAC2AgentBest", step=episode_num, write_meta_graph=False)
+            else:
+                improve_str = ''
 
-            logger.info("Episode {}/{}, Episode reward {}, Average reward {}, Average Max Q {}".format(episode_num,
-                self._num_episodes, self._total_reward, average, self._max_q / float(self._step)))
+            #if is_learning and episode_num % self._estimator_save_freq == 0:
+            #    logger.info("Saving agent checkpoints")
+            #    self.save(self._estimator_dir, step=episode_num, write_meta_graph=False)
 
-            self._summary_writer.writeSummary({"TotalReward": self._total_reward[0],
-                "AverageMaxQ": self._max_q / float(self._step)}, episode_num)
+            log_string = "Episode {0:>5}/{1:>5} ({2:>5}/{3:>5} in this run), " +\
+                         "R {4:>9.3f}, Ave R {5:>9.3f} {7}, Ave Max Q {6:>9.3f}"
+
+            logger.info(log_string.format(episode_num, self._num_episodes + episode_start_num - 1,
+                episode_num - episode_start_num + 1,
+                self._num_episodes,
+                self._total_reward[0], average, self._max_q / float(self._step), improve_str))
+
+            self._summary_writer.writeSummary({
+                "TotalReward": self._total_reward[0],
+                "AverageMaxQ": self._max_q / float(self._step),
+                "BestAverage": self._best_average,
+                }, episode_num)
+
             self._total_reward = 0.0
             self._max_q = 0.0
             self._step = 0
@@ -101,7 +126,7 @@ class DPGAC2Agent(object):
         self._current_state = current_state.copy()
 
         if is_learning and self._replay_buffer.size() >= self._minibatch_size and not self._stop_training:
-            self._train(episode_num)
+            self._train()
 
         best_action = self._policy_estimator.predict(self._current_state)
 
@@ -109,7 +134,7 @@ class DPGAC2Agent(object):
 
         return best_action, termination
 
-    def _train(self, episode_num):
+    def _train(self):
         current_state_batch, action_batch, reward_batch, termination_batch, next_state_batch =\
                 self._replay_buffer.sample_batch(self._minibatch_size)
         current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)

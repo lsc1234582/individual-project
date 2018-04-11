@@ -13,6 +13,8 @@ def runEnvironmentWithAgent(makeAgent, args):
     config.gpu_options.allow_growth = True
     config.log_device_placement = False
     logger.info("Making environment {}".format(args.env_name))
+    # Set graph-level random seed to ensure repeatability of experiments
+    tf.set_random_seed(args.random_seed)
     with EnvironmentContext(args.env_name) as env, tf.Session(config=config) as session:
         #global_step = tf.Variable(0, name="global_step", trainable=False)
         # To record progress across different training sessions
@@ -23,25 +25,27 @@ def runEnvironmentWithAgent(makeAgent, args):
         session.run(tf.global_variables_initializer())
         if args.new_estimator:
             logger.info("Saving initial agent to {}".format(args.estimator_dir))
-            agent.save(args.estimator_dir, 0, True)
+            agent.save(args.estimator_dir, step=0, write_meta_graph=True)
         else:
             logger.info("Restoring agent from {}".format(args.estimator_dir))
-            agent.load(args.estimator_dir)
+            agent.load(args.estimator_dir, args._estimator_name)
 
         episode_start = session.run(global_episode_num)
         logger.info("Continueing at episode {}".format(episode_start))
         # Run the environment feedback loop
-        for episode_num in range(episode_start, args.num_episodes + 1):
+        for episode_num in range(episode_start, episode_start + args.num_episodes):
             observation = env.reset()
             reward = 0.0
             done = False
-            action, done = agent.act(observation, reward, done, episode_num, is_learning=(not args.stop_agent_learning))
+            action, done = agent.act(observation, reward, done, episode_start, episode_num, global_episode_num,
+                    is_learning=(not args.stop_agent_learning))
 
             while not done:
                 if args.render_env:
                     env.render()
                 observation, reward, done, _ = env.step(action)
-                action, done = agent.act(observation, reward, done, episode_num, is_learning=(not args.stop_agent_learning))
+                action, done = agent.act(observation, reward, done, episode_start, episode_num, global_episode_num,
+                                         is_learning=(not args.stop_agent_learning))
                 #logger.debug("Observation")
                 #logger.debug(observation)
                 #logger.debug("Action")
@@ -50,11 +54,6 @@ def runEnvironmentWithAgent(makeAgent, args):
                 #logger.debug(reward)
                 #logger.debug("Done")
                 #logger.debug(done)
-            # Increment global episode num
-            session.run(tf.assign(global_episode_num, global_episode_num + 1))
-            if not args.stop_agent_learning and episode_num % args.estimator_save_freq == 0:
-                logger.info("Saving agent checkpoints")
-                agent.save(args.estimator_dir, episode_num, False)
             # No need to push forward when the agent stops training and has collected enough episodes to obtain a score
             if agent._stop_training and agent.score():
                 logger.warn("Agent stopped training. Exiting experiment...")

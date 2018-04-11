@@ -56,6 +56,7 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
     summary_writer = SummaryWriter(session, args.summary_dir,[
         "TotalReward",
         "AverageMaxQ",
+        "BestAverage",
         #"ValueEstimatorTrainLoss"
         ])
 
@@ -107,6 +108,7 @@ if __name__ == "__main__":
     # Other parameters
     parser.add_argument("--summary-dir", help="directory for storing tensorboard info", required=True)
     parser.add_argument("--estimator-dir", help="directory for loading/storing estimators", required=True)
+    parser.add_argument("--estimator-name", help="name of the agent to load; if left blank the most recent will be loaded instead")
     parser.add_argument("--new-estimator", help="if creating new estimators instead of loading old ones", action="store_true")
     parser.add_argument("--max-estimators-to-keep", help="maximal number of estimators to keep checkpointing",
             type=int, default=5)
