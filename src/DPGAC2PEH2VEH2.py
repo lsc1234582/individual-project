@@ -108,12 +108,12 @@ if __name__ == "__main__":
     # Other parameters
     parser.add_argument("--summary-dir", help="directory for storing tensorboard info", required=True)
     parser.add_argument("--estimator-dir", help="directory for loading/storing estimators", required=True)
-    parser.add_argument("--estimator-name", help="name of the agent to load; if left blank the most recent will be loaded instead")
     parser.add_argument("--new-estimator", help="if creating new estimators instead of loading old ones", action="store_true")
     parser.add_argument("--max-estimators-to-keep", help="maximal number of estimators to keep checkpointing",
-            type=int, default=5)
+            type=int, default=3)
     parser.add_argument("--estimator-save-freq", help="estimator save frequency (per number of episodes)",
             type=int, default=1)
+    parser.add_argument("--estimator-load-mode", help="0: load most recent 1: load best", type=int, default=0)
 
     parser.set_defaults(stop_agent_learning=False)
     parser.set_defaults(render_env=False)
