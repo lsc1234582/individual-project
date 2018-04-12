@@ -44,6 +44,16 @@ class VREPPushTaskEnvironment(object):
         self.close()
         return False
 
+    def _getCuboidPosition(self):
+        x_y_pos = np.random.rand(2) / 2 + 0.3
+
+        return np.concatenate(x_y_pos, [0.05])
+
+    def _getTargetPosition(self):
+        x_y_pos = np.random.rand(2) / 2 + 0.5
+
+        return np.concatenate(x_y_pos, [0.0])
+
     def _tearDownDatastream(self):
         # tear down datastreams
         for i in range(6):
@@ -111,24 +121,6 @@ class VREPPushTaskEnvironment(object):
         return np.concatenate([current_vel, joint_angles, gripper_pos, gripper_orient, cuboid_gripper_vec,
             target_plane_cuboid_vec])
 
-    def getCurrentState1D(self, client_ID, joint_handles, gripper_handle, cuboid_handle, target_plane_handle):
-        """
-            TODO: Refactor away arguments
-            Return the state as an array of shape (1, )
-            [current_vel]
-             1
-        """
-        current_vel = np.array([0], dtype='float')
-        #joint_angles = np.array([0], dtype='float')
-        # obtain first state
-        ret, current_vel[0] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[0], 2012,
-                vrep.simx_opmode_buffer)
-        while ret != vrep.simx_return_ok:
-            ret, current_vel[0] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[0], 2012,
-                    vrep.simx_opmode_buffer)
-
-        return current_vel
-
     def _initialise(self):
         """
         Initialise the environment
@@ -148,7 +140,8 @@ class VREPPushTaskEnvironment(object):
         for i in range(6):
             vrep.simxSetJointPosition(self.client_ID, self.joint_handles[i], VREPPushTaskEnvironment.INITIAL_JOINT_POSITIONS[i], vrep.simx_opmode_oneshot)
         vrep.simxSetObjectOrientation(self.client_ID, self.cuboid_handle, -1, [0, 0, 0], vrep.simx_opmode_oneshot)
-        vrep.simxSetObjectPosition(self.client_ID, self.cuboid_handle, -1, VREPPushTaskEnvironment.INITIAL_CUBOID_POSITION, vrep.simx_opmode_oneshot)
+        vrep.simxSetObjectPosition(self.client_ID, self.cuboid_handle, -1, self._getCuboidPosition(), vrep.simx_opmode_oneshot)
+        vrep.simxSetObjectPosition(self.client_ID, self.target_plane_handle, -1, self._getTargetPosition(), vrep.simx_opmode_oneshot)
         vrep.simxPauseCommunication(self.client_ID, 0)
         vrep.simxGetPingTime(self.client_ID)
 
@@ -193,64 +186,13 @@ class VREPPushTaskEnvironment(object):
         return self._initialise()
 
 
-    def initialise1D(self):
-        # get handles
-        _, self.cuboid_handle = vrep.simxGetObjectHandle(self.client_ID, 'Cuboid', vrep.simx_opmode_blocking)
-        _, self.target_plane_handle = vrep.simxGetObjectHandle(self.client_ID, 'TargetPlane', vrep.simx_opmode_blocking)
-
-        _, self.model_base_handle = vrep.simxLoadModel(self.client_ID, 'models/robots/non-mobile/MicoRobot.ttm', 0, vrep.simx_opmode_blocking)
-        self.joint_handles = [-1, -1, -1, -1, -1, -1]
-        for i in range(6):
-            _, self.joint_handles[i] = vrep.simxGetObjectHandle(self.client_ID, 'Mico_joint' + str(i+1), vrep.simx_opmode_blocking)
-        _, self.gripper_handle = vrep.simxGetObjectHandle(self.client_ID, 'MicoHand', vrep.simx_opmode_blocking)
-
-        # initialise mico joint positions, cuboid orientation and cuboid position
-        vrep.simxPauseCommunication(self.client_ID, 1)
-        for i in range(6):
-            vrep.simxSetJointPosition(self.client_ID, self.joint_handles[i], VREPPushTaskEnvironment.INITIAL_JOINT_POSITIONS[i], vrep.simx_opmode_oneshot)
-        vrep.simxSetObjectOrientation(self.client_ID, self.cuboid_handle, -1, [0, 0, 0], vrep.simx_opmode_oneshot)
-        vrep.simxSetObjectPosition(self.client_ID, self.cuboid_handle, -1, VREPPushTaskEnvironment.INITIAL_CUBOID_POSITION, vrep.simx_opmode_oneshot)
-        vrep.simxPauseCommunication(self.client_ID, 0)
-        vrep.simxGetPingTime(self.client_ID)
-
-        current_vel = np.array([0], dtype='float')
-
-        # set up datastreams
-        _, current_vel[0] = vrep.simxGetObjectFloatParameter(self.client_ID, self.joint_handles[0], 2012,
-                vrep.simx_opmode_streaming)
-
-        # destroy dummy arrays for setting up the datastream
-        del current_vel
-
-        # obtain first state
-        current_state = self.getCurrentState1D(self.client_ID, self.joint_handles, self.gripper_handle, self.cuboid_handle,
-                self.target_plane_handle)
-
-        self.state = current_state
-
-        return current_state
-
-    def reset1D(self):
-        """
-        Reset the environment
-        Return initial state
-
-        """
-
-        # tear down datastreams
-        _, _ = vrep.simxGetObjectFloatParameter(self.client_ID, self.joint_handles[0], 2012, vrep.simx_opmode_discontinue)
-
-        # remove Mico
-        vrep.simxRemoveModel(self.client_ID, self.model_base_handle, vrep.simx_opmode_blocking)
-
-        return self.initialise1D()
-
     def getRewards(self, state, action):
         """
-            Return the sum of the Euclidean distance between gripper and cuboid and the Euclidean distance between cuboid and targetPlane.
-            NB: Rewards should be non-negative
+            Return the negated sum of the Euclidean distance between gripper and cuboid and the Euclidean distance between cuboid and targetPlane.
+            and the magnitude of the action
         """
-        return -(np.sqrt(np.sum(np.square(state[-6:-3]))) + np.sqrt(np.sum(np.square(state[-3:]))))
+        return -(np.sqrt(np.sum(np.square(state[-6:-3]))) + np.sqrt(np.sum(np.square(state[-3:]))) +
+                np.sqrt(np.sum(np.square(action))))
         #return -(np.sqrt(np.sum(np.square(action))))
         #return np.tanh(-(np.sqrt(np.sum(np.square(state[:1]))))/10.0) + 1.0
 
@@ -291,37 +233,6 @@ class VREPPushTaskEnvironment(object):
         rewards = np.array(rewards)
         return next_states, rewards, False, None
 
-
-    def step1D(self, actions):
-        """
-        Execute sequences of actions (None, 1) in the environment
-        Return sequences of subsequent states and rewards
-        """
-        next_states = []
-        rewards = []
-        for i in range(actions.shape[0]):
-            current_vel = self.state[:1] + actions[i, :]
-            # Cap at max velocity
-            vel = max(-VREPPushTaskEnvironment.MAX_JOINT_VELOCITY, min(VREPPushTaskEnvironment.MAX_JOINT_VELOCITY,
-                current_vel[0]))
-            vrep.simxSetJointTargetVelocity(self.client_ID, self.joint_handles[0], vel, vrep.simx_opmode_oneshot)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            # make sure all commands are exeucted
-            vrep.simxGetPingTime(self.client_ID)
-            # obtain next state
-            next_state = self.getCurrentState1D(self.client_ID, self.joint_handles, self.gripper_handle, self.cuboid_handle,
-                    self.target_plane_handle)
-            next_states.append(next_state)
-            rewards.append(self.getRewards(next_state, actions[i]))
-            self.state = np.copy(next_state)
-
-        next_states = np.concatenate(next_states)
-        rewards = np.array(rewards)
-        return next_states, rewards
 
 def make(env_name):
     if env_name == "VREPPushTask":
