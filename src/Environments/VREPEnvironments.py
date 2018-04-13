@@ -26,6 +26,17 @@ class VREPPushTaskEnvironment(object):
         self.action_space = Box((6,), (-1.0,), (1.0,))
         self.observation_space = Box((24,), (-999.0,), (999.0,))
 
+        # Initialise properties of Mico's reachability
+        self._root_pos = np.array([0.0, 0.0, 0.0])
+        self._rc = 0.3  # Close radius
+        self._rf = 0.6  # Far radius
+        self._rm = (self._rc + self._rf) / 2.0  # Mean radius
+        self._rstd = (self._rf - self._rm) / 2.0  # Radius std
+
+        self._cb_target_dist_mean = 0.2  # cuboid to target mean distance
+        self._cb_target_dist_std = 0.1
+        self._cb_height = 0.05
+
         vrep.simxFinish(-1) # just in case, close all opened connections
         self.client_ID=vrep.simxStart('127.0.0.1',19997,True,True,5000,5) # Connect to V-REP
         if self.client_ID == -1:
@@ -44,15 +55,34 @@ class VREPPushTaskEnvironment(object):
         self.close()
         return False
 
-    def _getCuboidPosition(self):
-        x_y_pos = np.random.rand(2) / 2 + 0.3
+    def _rtheta2Vec(self, r, theta):
+        """
+        Convert (r, theta) to (x, y)
+        """
+        return np.array([r * np.cos(theta), r * np.sin(theta), self._cb_height])
 
-        return np.concatenate(x_y_pos, [0.05])
+    def _sampleCuboidPos(self):
+        cb_r = np.random.normal(self._rm, self._rstd)
+        cb_theta = np.random.uniform(-np.pi, np.pi)
 
-    def _getTargetPosition(self):
-        x_y_pos = np.random.rand(2) / 2 + 0.5
+        return self._root_pos + self._rtheta2Vec(cb_r, cb_theta), cb_r, cb_theta
 
-        return np.concatenate(x_y_pos, [0.0])
+    def _sampleTargetPos(self, cb_r, cb_theta, cb_pos=None):
+        t_theta_c = np.arctan(self._rc / cb_r)
+        t_theta_std = (np.pi - t_theta_c) / 3.0
+        t_theta = np.random.normal(cb_theta, t_theta_std)
+        t_r = np.random.normal(self._cb_target_dist_mean, self._cb_target_dist_std)
+        #print("cb_r: {}, cb_theta: {}".format(t_r, t_theta))
+        if not cb_pos is None:
+            return cb_pos + self._rtheta2Vec(t_r, t_theta)
+        else:
+            return self._rtheta2Vec(cb_r, cb_theta) + self._rtheta2Vec(t_r, t_theta)
+
+    def _sampleCuboidPosAndTargetPos(self):
+        cb_pos, cb_r, cb_theta = self._sampleCuboidPos()
+        t_pos = cb_pos + self._sampleTargetPos(cb_r, cb_r, cb_pos=cb_pos)
+
+        return cb_pos.tolist(), t_pos.tolist()
 
     def _tearDownDatastream(self):
         # tear down datastreams
@@ -135,13 +165,16 @@ class VREPPushTaskEnvironment(object):
             _, self.joint_handles[i] = vrep.simxGetObjectHandle(self.client_ID, 'Mico_joint' + str(i+1), vrep.simx_opmode_blocking)
         _, self.gripper_handle = vrep.simxGetObjectHandle(self.client_ID, 'MicoHand', vrep.simx_opmode_blocking)
 
+        # get new cuboid and target positions
+        cb_pos, t_pos = self._sampleCuboidPosAndTargetPos()
+
         # initialise mico joint positions, cuboid orientation and cuboid position
         vrep.simxPauseCommunication(self.client_ID, 1)
         for i in range(6):
             vrep.simxSetJointPosition(self.client_ID, self.joint_handles[i], VREPPushTaskEnvironment.INITIAL_JOINT_POSITIONS[i], vrep.simx_opmode_oneshot)
         vrep.simxSetObjectOrientation(self.client_ID, self.cuboid_handle, -1, [0, 0, 0], vrep.simx_opmode_oneshot)
-        vrep.simxSetObjectPosition(self.client_ID, self.cuboid_handle, -1, self._getCuboidPosition(), vrep.simx_opmode_oneshot)
-        vrep.simxSetObjectPosition(self.client_ID, self.target_plane_handle, -1, self._getTargetPosition(), vrep.simx_opmode_oneshot)
+        vrep.simxSetObjectPosition(self.client_ID, self.cuboid_handle, -1, cb_pos, vrep.simx_opmode_oneshot)
+        vrep.simxSetObjectPosition(self.client_ID, self.target_plane_handle, -1, t_pos, vrep.simx_opmode_oneshot)
         vrep.simxPauseCommunication(self.client_ID, 0)
         vrep.simxGetPingTime(self.client_ID)
 
