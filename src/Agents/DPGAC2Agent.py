@@ -96,7 +96,8 @@ class DPGAC2Agent(object):
             self._sess.run(tf.assign(episode_num_var, episode_num))
 
             # Check for improvements
-            if self._best_average is None or self._best_average < average:
+            if len(self._rewards_list) >= self._num_rewards_to_average and\
+                (self._best_average is None or self._best_average < average):
                 self._best_average = average
                 improve_str = '*'
             else:
