@@ -16,13 +16,13 @@ class Box(object):
 class VREPPushTaskEnvironment(object):
     MAX_JOINT_VELOCITY_DELTA = 1.0
     MAX_JOINT_VELOCITY = 6.0
-    #INITIAL_JOINT_POSITIONS = [np.pi, 1.5 * np.pi, 1.5 * np.pi, np.pi, np.pi, np.pi]
-    #INITIAL_CUBOID_POSITION = [0., 0.5, 0.05]
-    INITIAL_JOINT_POSITIONS = [np.pi, 1.5 * np.pi, 1.5 * np.pi, np.pi, np.pi, np.pi]
-    INITIAL_CUBOID_POSITION = [0.3, 0.5, 0.05]
+    DEFAULT_JOINT_POSITIONS = [np.pi, 1.5 * np.pi, 1.5 * np.pi, np.pi, np.pi, np.pi]
+    DEFAULT_CUBOID_POSITION = [0.3, 0.5, 0.05]
 
-    def __init__(self):
+    def __init__(self, init_joint_pos=None, init_cb_pos=None):
         logger.info("Creating VREPPushTaskEnvironment")
+        self._init_joint_pos = init_joint_pos if not init_joint_pos is None else VREPPushTaskEnvironment.DEFAULT_JOINT_POSITIONS
+        self._init_cb_pos = init_cb_pos if not init_cb_pos is None else VREPPushTaskEnvironment.DEFAULT_CUBOID_POSITION
         self.action_space = Box((6,), (-1.0,), (1.0,))
         self.observation_space = Box((24,), (-999.0,), (999.0,))
 
@@ -111,24 +111,6 @@ class VREPPushTaskEnvironment(object):
         return np.concatenate([current_vel, joint_angles, gripper_pos, gripper_orient, cuboid_gripper_vec,
             target_plane_cuboid_vec])
 
-    def getCurrentState1D(self, client_ID, joint_handles, gripper_handle, cuboid_handle, target_plane_handle):
-        """
-            TODO: Refactor away arguments
-            Return the state as an array of shape (1, )
-            [current_vel]
-             1
-        """
-        current_vel = np.array([0], dtype='float')
-        #joint_angles = np.array([0], dtype='float')
-        # obtain first state
-        ret, current_vel[0] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[0], 2012,
-                vrep.simx_opmode_buffer)
-        while ret != vrep.simx_return_ok:
-            ret, current_vel[0] = vrep.simxGetObjectFloatParameter(client_ID, joint_handles[0], 2012,
-                    vrep.simx_opmode_buffer)
-
-        return current_vel
-
     def _initialise(self):
         """
         Initialise the environment
@@ -146,9 +128,9 @@ class VREPPushTaskEnvironment(object):
         # initialise mico joint positions, cuboid orientation and cuboid position
         vrep.simxPauseCommunication(self.client_ID, 1)
         for i in range(6):
-            vrep.simxSetJointPosition(self.client_ID, self.joint_handles[i], VREPPushTaskEnvironment.INITIAL_JOINT_POSITIONS[i], vrep.simx_opmode_oneshot)
+            vrep.simxSetJointPosition(self.client_ID, self.joint_handles[i], self._init_joint_pos[i], vrep.simx_opmode_oneshot)
         vrep.simxSetObjectOrientation(self.client_ID, self.cuboid_handle, -1, [0, 0, 0], vrep.simx_opmode_oneshot)
-        vrep.simxSetObjectPosition(self.client_ID, self.cuboid_handle, -1, VREPPushTaskEnvironment.INITIAL_CUBOID_POSITION, vrep.simx_opmode_oneshot)
+        vrep.simxSetObjectPosition(self.client_ID, self.cuboid_handle, -1, self._init_cb_pos, vrep.simx_opmode_oneshot)
         vrep.simxPauseCommunication(self.client_ID, 0)
         vrep.simxGetPingTime(self.client_ID)
 
@@ -192,58 +174,6 @@ class VREPPushTaskEnvironment(object):
 
         return self._initialise()
 
-
-    def initialise1D(self):
-        # get handles
-        _, self.cuboid_handle = vrep.simxGetObjectHandle(self.client_ID, 'Cuboid', vrep.simx_opmode_blocking)
-        _, self.target_plane_handle = vrep.simxGetObjectHandle(self.client_ID, 'TargetPlane', vrep.simx_opmode_blocking)
-
-        _, self.model_base_handle = vrep.simxLoadModel(self.client_ID, 'models/robots/non-mobile/MicoRobot.ttm', 0, vrep.simx_opmode_blocking)
-        self.joint_handles = [-1, -1, -1, -1, -1, -1]
-        for i in range(6):
-            _, self.joint_handles[i] = vrep.simxGetObjectHandle(self.client_ID, 'Mico_joint' + str(i+1), vrep.simx_opmode_blocking)
-        _, self.gripper_handle = vrep.simxGetObjectHandle(self.client_ID, 'MicoHand', vrep.simx_opmode_blocking)
-
-        # initialise mico joint positions, cuboid orientation and cuboid position
-        vrep.simxPauseCommunication(self.client_ID, 1)
-        for i in range(6):
-            vrep.simxSetJointPosition(self.client_ID, self.joint_handles[i], VREPPushTaskEnvironment.INITIAL_JOINT_POSITIONS[i], vrep.simx_opmode_oneshot)
-        vrep.simxSetObjectOrientation(self.client_ID, self.cuboid_handle, -1, [0, 0, 0], vrep.simx_opmode_oneshot)
-        vrep.simxSetObjectPosition(self.client_ID, self.cuboid_handle, -1, VREPPushTaskEnvironment.INITIAL_CUBOID_POSITION, vrep.simx_opmode_oneshot)
-        vrep.simxPauseCommunication(self.client_ID, 0)
-        vrep.simxGetPingTime(self.client_ID)
-
-        current_vel = np.array([0], dtype='float')
-
-        # set up datastreams
-        _, current_vel[0] = vrep.simxGetObjectFloatParameter(self.client_ID, self.joint_handles[0], 2012,
-                vrep.simx_opmode_streaming)
-
-        # destroy dummy arrays for setting up the datastream
-        del current_vel
-
-        # obtain first state
-        current_state = self.getCurrentState1D(self.client_ID, self.joint_handles, self.gripper_handle, self.cuboid_handle,
-                self.target_plane_handle)
-
-        self.state = current_state
-
-        return current_state
-
-    def reset1D(self):
-        """
-        Reset the environment
-        Return initial state
-
-        """
-
-        # tear down datastreams
-        _, _ = vrep.simxGetObjectFloatParameter(self.client_ID, self.joint_handles[0], 2012, vrep.simx_opmode_discontinue)
-
-        # remove Mico
-        vrep.simxRemoveModel(self.client_ID, self.model_base_handle, vrep.simx_opmode_blocking)
-
-        return self.initialise1D()
 
     def getRewards(self, state, action):
         """
@@ -292,39 +222,13 @@ class VREPPushTaskEnvironment(object):
         return next_states, rewards, False, None
 
 
-    def step1D(self, actions):
-        """
-        Execute sequences of actions (None, 1) in the environment
-        Return sequences of subsequent states and rewards
-        """
-        next_states = []
-        rewards = []
-        for i in range(actions.shape[0]):
-            current_vel = self.state[:1] + actions[i, :]
-            # Cap at max velocity
-            vel = max(-VREPPushTaskEnvironment.MAX_JOINT_VELOCITY, min(VREPPushTaskEnvironment.MAX_JOINT_VELOCITY,
-                current_vel[0]))
-            vrep.simxSetJointTargetVelocity(self.client_ID, self.joint_handles[0], vel, vrep.simx_opmode_oneshot)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            # make sure all commands are exeucted
-            vrep.simxGetPingTime(self.client_ID)
-            # obtain next state
-            next_state = self.getCurrentState1D(self.client_ID, self.joint_handles, self.gripper_handle, self.cuboid_handle,
-                    self.target_plane_handle)
-            next_states.append(next_state)
-            rewards.append(self.getRewards(next_state, actions[i]))
-            self.state = np.copy(next_state)
-
-        next_states = np.concatenate(next_states)
-        rewards = np.array(rewards)
-        return next_states, rewards
-
 def make(env_name):
     if env_name == "VREPPushTask":
         return VREPPushTaskEnvironment()
+    elif env_name == "VREPPushTaskContact":
+        return VREPPushTaskEnvironment(
+                init_joint_pos=[np.pi, 5.0, np.pi, np.pi, np.pi, 3.40],
+                init_cb_pos=[0.35, 0.35, 0.05],
+                )
     else:
-        raise
+        raise IOError("Invalid VREP Environment name")
