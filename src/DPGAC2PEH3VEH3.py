@@ -16,17 +16,18 @@ from EnvironmentRunner import runEnvironmentWithAgent
 # Module logger
 logger = getModuleLogger(__name__)
 
-def MakeDPGAC2PEH2VEH2(session, env, args):
+def MakeDPGAC2PEH3VEH3(session, env, args):
     # The number of states about the environment the agent can observe
     observation_space_dim = env.observation_space.shape[0]
     # The number of actions the agent can make
     action_space_dim = env.action_space.shape[0]
     assert(env.action_space.high[0] == -env.action_space.low[0])
 
-    # The shapes of the hidden layers of the policy estimator
+    # The shapes of the layers of the policy estimator
     pe_layer_shapes = [
             max(1, int(args.pe_h1_multiplier * observation_space_dim)),
             max(1, int(args.pe_h2_multiplier * observation_space_dim)),
+            max(1, int(args.pe_h3_multiplier * observation_space_dim)),
             ]
 
     # This implementation assumes a particular architecture for value estimator
@@ -34,6 +35,7 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
     ve_layer_shapes = [
             max(1, int(args.ve_h1_multiplier * observation_space_dim)),
             max(1, int(args.ve_h2_multiplier * observation_space_dim)),
+            max(1, int(args.ve_h3_multiplier * observation_space_dim)),
             ]
 
     policy_estimator = DPGMultiPerceptronPolicyEstimator(
@@ -88,7 +90,7 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="provide arguments for DPGAC2PEH1VEH1 agent")
+    parser = argparse.ArgumentParser(description="provide arguments for DPGAC2PEH3VEH3 agent")
 
     # Agent and run parameters
     parser.add_argument("--stop-agent-learning", help="Is Agent learning", action="store_true")
@@ -97,9 +99,11 @@ if __name__ == "__main__":
     parser.add_argument("--pe-learning-rate", help="Policy esitmator learning rate", type=float, default=0.0001)
     parser.add_argument("--pe-h1-multiplier", help="Policy estimator hidden layer 1 size multiplier", type=float, default=10)
     parser.add_argument("--pe-h2-multiplier", help="Policy estimator hidden layer 2 size multiplier", type=float, default=10)
+    parser.add_argument("--pe-h3-multiplier", help="Policy estimator hidden layer 3 size multiplier", type=float, default=10)
     parser.add_argument("--ve-learning-rate", help="Value esitmator learning rate", type=float, default=0.001)
     parser.add_argument("--ve-h1-multiplier", help="Value estimator hidden layer 1 size multiplier", type=float, default=10)
     parser.add_argument("--ve-h2-multiplier", help="Value estimator hidden layer 2 size multiplier", type=float, default=10)
+    parser.add_argument("--ve-h3-multiplier", help="Value estimator hidden layer 3 size multiplier", type=float, default=10)
     parser.add_argument("--discount-factor", help="discount factor for critic updates", type=float, default=0.99)
     parser.add_argument("--tau", help="soft target update parameter", type=float, default=0.001)
     parser.add_argument("--minibatch-size-log", help="size of minibatch for minibatch-SGD as exponent of 2",
@@ -127,9 +131,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    args.agent_name = "DPGAC2PEH2VEH2"
+    args.agent_name = "DPGAC2PEH3VEH3"
 
     logger.info("Starting Agent {} in Environment {}".format(args.agent_name, args.env_name))
-    best_score = runEnvironmentWithAgent(MakeDPGAC2PEH2VEH2, args)
+    best_score = runEnvironmentWithAgent(MakeDPGAC2PEH3VEH3, args)
     logger.info("Exiting")
 

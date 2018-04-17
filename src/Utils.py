@@ -34,6 +34,10 @@ def getModuleLogger(module_name):
     logger.addHandler(ch)
     return logger
 
+class SortedDisplayDict(dict):
+   def __str__(self):
+       return "{" + ", ".join("%r: %r" % (key, self[key]) for key in sorted(self)) + "}"
+
 class ReplayBuffer(object):
 
     def __init__(self, buffer_size):

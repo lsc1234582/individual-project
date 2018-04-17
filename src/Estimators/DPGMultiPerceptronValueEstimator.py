@@ -9,17 +9,15 @@ class DPGMultiPerceptronValueEstimator(object):
     Input to the network is the state and action, output is Q(s,a).
     The action must be obtained from the output of the Actor network.
 
-    NB: This implementation assumes a particular architecture, thus unchangeable, only with tunable
-    hyper-parameters
+    NB: This implementation assumes a particular architecture
     """
 
-    def __init__(self, sess, state_dim, action_dim, h1_dim, h2_dim, learning_rate, tau, num_actor_vars,
+    def __init__(self, sess, state_dim, action_dim, h_layer_shapes, learning_rate, tau, num_actor_vars,
     scope="value_estimator"):
         self._sess = sess
-        self._s_dim = state_dim
-        self._a_dim = action_dim
-        self._h1_dim = h1_dim
-        self._h2_dim = h2_dim
+        self._state_dim = state_dim
+        self._action_dim = action_dim
+        self._h_layer_shapes = h_layer_shapes
         self._learning_rate = learning_rate
         self._tau = tau
 
@@ -78,16 +76,19 @@ class DPGMultiPerceptronValueEstimator(object):
 
     def _create_critic_network(self, scope):
         with tf.name_scope(scope):
-            inputs = tflearn.input_data(shape=[None, self._s_dim], name="inputs")
-            action = tflearn.input_data(shape=[None, self._a_dim], name="action")
-            net = tflearn.fully_connected(inputs, self._h1_dim)
-            net = tflearn.layers.normalization.batch_normalization(net)
-            net = tflearn.activations.relu(net)
+            inputs = tflearn.input_data(shape=(None, self._state_dim), name="inputs")
+            action = tflearn.input_data(shape=(None, self._action_dim), name="action")
+            net = inputs
 
-            # Add the action tensor in the 2nd hidden layer
+            for i in range(len(self._h_layer_shapes) - 1):
+                net = tflearn.fully_connected(net, self._h_layer_shapes[i])
+                net = tflearn.layers.normalization.batch_normalization(net)
+                net = tflearn.activations.relu(net)
+
+            # Add the action tensor in the last hidden layer
             # Use two temp layers to get the corresponding weights and biases
-            t1 = tflearn.fully_connected(net, self._h2_dim)
-            t2 = tflearn.fully_connected(action, self._h2_dim)
+            t1 = tflearn.fully_connected(net, self._h_layer_shapes[-1])
+            t2 = tflearn.fully_connected(action, self._h_layer_shapes[-1])
 
             net = tflearn.activation(
                 tf.matmul(net, t1.W) + tf.matmul(action, t2.W) + t2.b, activation='relu')

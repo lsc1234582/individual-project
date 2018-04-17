@@ -13,10 +13,12 @@ class DPGMultiPerceptronPolicyEstimator(object):
     between -action_bound and action_bound
     """
 
-    def __init__(self, sess, layer_shapes, learning_rate, action_bound, tau,
+    def __init__(self, sess, state_dim, action_dim, h_layer_shapes, learning_rate, action_bound, tau,
             minibatch_size, scope="policy_estimator"):
         self._sess = sess
-        self._layer_shapes = layer_shapes
+        self._state_dim = state_dim
+        self._action_dim = action_dim
+        self._h_layer_shapes = h_layer_shapes
         self._action_bound = action_bound
         self._learning_rate = learning_rate
         self._tau = tau
@@ -43,7 +45,7 @@ class DPGMultiPerceptronPolicyEstimator(object):
 
         with tf.name_scope(scope):
             # This gradient will be provided by the critic network
-            self._action_gradient = tf.placeholder(tf.float32, [None, self._layer_shapes[-1]], name="action_gradient")
+            self._action_gradient = tf.placeholder(tf.float32, [None, self._action_dim], name="action_gradient")
 
             # Combine the gradients here
             self._unnormalized_actor_gradients = tf.gradients(
@@ -75,16 +77,16 @@ class DPGMultiPerceptronPolicyEstimator(object):
 
     def _create_actor_network(self, scope):
         with tf.name_scope(scope):
-            inputs = tflearn.input_data(shape=(None, self._layer_shapes[0]), name="inputs")
+            inputs = tflearn.input_data(shape=(None, self._state_dim), name="inputs")
             net = inputs
-            for i in range(1, len(self._layer_shapes) - 1):
-                net = tflearn.fully_connected(net, self._layer_shapes[i])
+            for i in range(len(self._h_layer_shapes)):
+                net = tflearn.fully_connected(net, self._h_layer_shapes[i])
                 net = tflearn.layers.normalization.batch_normalization(net)
                 net = tflearn.activations.relu(net)
             # Final layer weights are init to Uniform[-3e-3, 3e-3]
             w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
             out = tflearn.fully_connected(
-                net, self._layer_shapes[-1], activation='tanh', weights_init=w_init, name="out")
+                net, self._action_dim, activation='tanh', weights_init=w_init, name="out")
             # Scale output to -action_bound to action_bound
             scaled_out = tf.multiply(out, self._action_bound, name="scaled_out")
         return inputs, out, scaled_out

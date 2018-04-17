@@ -1,6 +1,8 @@
+import collections
 import tensorflow as tf
 from EnvironmentFactory import EnvironmentContext
 from Utils import getModuleLogger
+from Utils import SortedDisplayDict
 
 # Module logger
 logger = getModuleLogger(__name__)
@@ -8,7 +10,7 @@ logger = getModuleLogger(__name__)
 
 def runEnvironmentWithAgent(makeAgent, args):
     logger.info("Run info:")
-    logger.info(vars(args))
+    logger.info(SortedDisplayDict(vars(args)))
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.log_device_placement = False
