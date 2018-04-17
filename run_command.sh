@@ -1,1 +1,0 @@
-python ../../src/DPGAC2PEH2VEH2.py --env-name VREPPushTask --summary-dir summary --estimator-dir ./estimator --pe-h1-multiplier 16.7 --ve-h1-multiplier 16.7 --pe-h2-multiplier 12.5 --ve-h2-multiplier 12.5 --new-estimator

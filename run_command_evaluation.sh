@@ -1,1 +1,0 @@
-python ../../src/DPGAC2PEH2VEH2.py  --env-name VREPPushTask --estimator-dir ../DPGAC2VrepPushTask04/estimator/ --summary-dir summary --pe-h1-multiplier 16.7 --ve-h1-multiplier 16.7 --pe-h2-multiplier 12.5 --ve-h2-multiplier 12.5 --estimator-load-mode 1 --max-episode-length 100 --num-episodes 50 --stop-agent-learning
