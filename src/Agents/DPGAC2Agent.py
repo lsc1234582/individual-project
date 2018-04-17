@@ -40,7 +40,7 @@ class DPGAC2Agent(object):
         self._stop_training = False
         self._last_average = None
         self._num_non_imp_eps = 0  # Maximal number of non-improving episodes
-        self._max_num_non_imp_eps = 50  # Maximal number of non-improving episodes
+        self._max_num_non_imp_eps = 100  # Maximal number of non-improving episodes
 
         # Summary about training
         self._summary_writer = summary_writer
