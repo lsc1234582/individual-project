@@ -109,7 +109,7 @@ if __name__ == "__main__":
     parser.add_argument("--discount-factor", help="discount factor for critic updates", type=float, default=0.99)
     parser.add_argument("--tau", help="soft target update parameter", type=float, default=0.001)
     parser.add_argument("--minibatch-size-log", help="size of minibatch for minibatch-SGD as exponent of 2",
-            type=int, default=6)
+            type=int, default=7)
     parser.add_argument("--replay-buffer-size-log", help="max size of the replay buffer as exponent of 10", type=int, default=6)
 
     # Environment parameters
@@ -122,9 +122,9 @@ if __name__ == "__main__":
     parser.add_argument("--estimator-dir", help="directory for loading/storing estimators", required=True)
     parser.add_argument("--new-estimator", help="if creating new estimators instead of loading old ones", action="store_true")
     parser.add_argument("--max-estimators-to-keep", help="maximal number of estimators to keep checkpointing",
-            type=int, default=1)
+            type=int, default=2)
     parser.add_argument("--estimator-save-freq", help="estimator save frequency (per number of episodes)",
-            type=int, default=10)
+            type=int, default=50)
     parser.add_argument("--estimator-load-mode", help="0: load most recent 1: load best", type=int, default=0)
     parser.add_argument("--replay-buffer-load-dir", help="directory for loading replay buffer")
     parser.add_argument("--replay-buffer-save-dir", help="directory for storing replay buffer")
