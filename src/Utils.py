@@ -3,6 +3,7 @@ import gzip
 import logging
 import random
 import numpy as np
+import os
 import pickle as pkl
 import tensorflow as tf
 from collections import deque
@@ -46,17 +47,42 @@ class ReplayBuffer(object):
         self._buffer_size = buffer_size
         self._count = 0
         self._buffer = deque()
+        self._is_bkup = False
 
     def save(self, save_path):
-        with gzip.open(save_path, "wb") as f:
+        """
+        Use double buffer to provide a safe backup (if pickling is interrupted the save file is permenantly damaged)
+        """
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+
+        if self._is_bkup:
+            rb_file_name =  "replay-buffer-0.pklz"
+        else:
+            rb_file_name =  "replay-buffer-1.pklz"
+
+        rb_save_path = os.path.join(save_path, rb_file_name)
+
+        with gzip.open(rb_save_path, "wb") as f:
             pkl.dump(vars(self), f)
 
+        self._is_bkup = not self._is_bkup
+        with open(os.path.join(save_path, "checkpoint"), "w") as f:
+            f.write(rb_file_name)
+
+
     def load(self, load_path):
-        with gzip.open(load_path, "rb") as f:
+        if not os.path.exists(os.path.join(load_path, "checkpoint")):
+            raise IOError("No replay buffer checkpoint found")
+        with open(os.path.join(load_path, "checkpoint"), "r") as f:
+            rb_file_name = f.read()
+
+        with gzip.open(os.path.join(load_path, rb_file_name), "rb") as f:
             states = pkl.load(f)
             self._buffer_size = states["_buffer_size"]
             self._count = states["_count"]
             self._buffer = states["_buffer"]
+            self._is_bkup = states["_is_bkup"]
 
     def add(self, current_state, action, reward, termination, next_state):
         experience = [current_state, action, reward, termination, next_state]

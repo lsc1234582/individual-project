@@ -85,7 +85,9 @@ def MakeDPGAC2PEH3VEH3(session, env, args):
                 estimator_dir=args.estimator_dir,
                 estimator_saver_recent=estimator_saver_recent,
                 estimator_saver_best=estimator_saver_best,
-                recent_save_freq=args.estimator_save_freq
+                recent_save_freq=args.estimator_save_freq,
+                replay_buffer_dir=args.replay_buffer_save_dir,
+                replay_buffer_save_freq=args.replay_buffer_save_freq
                 )
 
 
@@ -124,6 +126,10 @@ if __name__ == "__main__":
     parser.add_argument("--estimator-save-freq", help="estimator save frequency (per number of episodes)",
             type=int, default=10)
     parser.add_argument("--estimator-load-mode", help="0: load most recent 1: load best", type=int, default=0)
+    parser.add_argument("--replay-buffer-load-dir", help="directory for loading replay buffer")
+    parser.add_argument("--replay-buffer-save-dir", help="directory for storing replay buffer")
+    parser.add_argument("--replay-buffer-save-freq", help="replay buffer save frequency (per number of episodes", type=int,
+            default=500)
 
     parser.set_defaults(stop_agent_learning=False)
     parser.set_defaults(render_env=False)

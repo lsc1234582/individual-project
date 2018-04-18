@@ -11,7 +11,8 @@ class DPGAC2Agent(object):
 
     def __init__(self, sess, policy_estimator, value_estimator,
             discount_factor, num_episodes, max_episode_length, minibatch_size, replay_buffer_size, actor_noise, summary_writer,
-            estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq):
+            estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_dir,
+            replay_buffer_save_freq):
         self._sess = sess
         self._policy_estimator = policy_estimator
         self._value_estimator = value_estimator
@@ -42,12 +43,14 @@ class DPGAC2Agent(object):
         self._num_non_imp_eps = 0  # Maximal number of non-improving episodes
         self._max_num_non_imp_eps = 100  # Maximal number of non-improving episodes
 
-        # Summary about training
+        # Summary and checkpoints
         self._summary_writer = summary_writer
         self._estimator_dir = estimator_dir
         self._estimator_saver_recent = estimator_saver_recent
         self._estimator_saver_best = estimator_saver_best
         self._recent_save_freq = recent_save_freq
+        self._replay_buffer_dir = replay_buffer_dir
+        self._replay_buffer_save_freq = replay_buffer_save_freq
 
     def save(self, estimator_dir, is_best=False, step=None, write_meta_graph=False):
         if write_meta_graph:
@@ -60,8 +63,11 @@ class DPGAC2Agent(object):
             else:
                 self._estimator_saver_recent.save(self._sess, "{}/recent/{}".format(estimator_dir, self.__class__.__name__), global_step=step,
                     write_meta_graph=False)
-            self._replay_buffer.save("{}/replay_buffer.pklz".format(estimator_dir))
             logger.info("{} saved".format(self.__class__.__name__))
+
+    def saveReplayBuffer(self, path):
+        self._replay_buffer.save(path)
+        logger.info("Replay buffer saved")
 
     def load(self, estimator_dir, is_best=False):
         if is_best:
@@ -72,9 +78,11 @@ class DPGAC2Agent(object):
             logger.info("Loading the most recent {}".format(self.__class__.__name__))
             self._estimator_saver_recent.restore(self._sess,
                     tf.train.latest_checkpoint("{}/recent".format(estimator_dir)))
-        self._replay_buffer.load("{}/replay_buffer.pklz".format(estimator_dir))
         logger.info("{} loaded".format(self.__class__.__name__))
 
+    def loadReplayBuffer(self, path):
+        self._replay_buffer.load(path)
+        logger.info("Replay buffer loaded")
 
     def score(self):
         return self._best_average
@@ -123,6 +131,11 @@ class DPGAC2Agent(object):
                     episode_start_num - 1):
                     logger.info("Saving agent checkpoints")
                     self.save(self._estimator_dir, step=episode_num, write_meta_graph=False)
+                if (not self._replay_buffer_dir is None) and \
+                    (episode_num % self._replay_buffer_save_freq == 0 or episode_num >= self._num_episodes +\
+                    episode_start_num - 1):
+                    logger.info("Saving replay buffer")
+                    self.saveReplayBuffer(self._replay_buffer_dir)
 
             # Save summary
             self._summary_writer.writeSummary({

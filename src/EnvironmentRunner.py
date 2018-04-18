@@ -31,6 +31,10 @@ def runEnvironmentWithAgent(makeAgent, args):
         else:
             logger.info("Restoring agent from {}".format(args.estimator_dir))
             agent.load(args.estimator_dir, is_best=(args.estimator_load_mode==1))
+        if not args.replay_buffer_load_dir is None:
+            logger.info("Restoring replay buffer from {}".format(args.replay_buffer_load_dir))
+            agent.loadReplayBuffer(args.replay_buffer_load_dir)
+
 
         episode_start = session.run(global_episode_num) + 1
         logger.info("Continueing at episode {}".format(episode_start))
