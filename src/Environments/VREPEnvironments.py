@@ -204,10 +204,6 @@ class VREPPushTaskEnvironment(object):
                         vrep.simx_opmode_oneshot)
             vrep.simxPauseCommunication(self.client_ID, 0)
             vrep.simxSynchronousTrigger(self.client_ID)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            vrep.simxSynchronousTrigger(self.client_ID)
-            vrep.simxSynchronousTrigger(self.client_ID)
             # make sure all commands are exeucted
             vrep.simxGetPingTime(self.client_ID)
             # obtain next state
