@@ -1,7 +1,9 @@
 import collections
+import gzip
 import logging
 import random
 import numpy as np
+import pickle as pkl
 import tensorflow as tf
 from collections import deque
 
@@ -45,6 +47,17 @@ class ReplayBuffer(object):
         self._count = 0
         self._buffer = deque()
 
+    def save(self, save_path):
+        with gzip.open(save_path, "wb") as f:
+            pkl.dump(vars(self), f)
+
+    def load(self, load_path):
+        with gzip.open(load_path, "rb") as f:
+            states = pkl.load(f)
+            self._buffer_size = states["_buffer_size"]
+            self._count = states["_count"]
+            self._buffer = states["_buffer"]
+
     def add(self, current_state, action, reward, termination, next_state):
         experience = [current_state, action, reward, termination, next_state]
 
@@ -86,7 +99,7 @@ class ReplayBuffer(object):
         self._count = 0
 
     def __str__(self):
-        return str(self._buffer)
+        return str(vars(self))
 
 class SummaryWriter(object):
 

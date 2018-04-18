@@ -60,6 +60,7 @@ class DPGAC2Agent(object):
             else:
                 self._estimator_saver_recent.save(self._sess, "{}/recent/{}".format(estimator_dir, self.__class__.__name__), global_step=step,
                     write_meta_graph=False)
+            self._replay_buffer.save("{}/replay_buffer.pklz".format(estimator_dir))
             logger.info("{} saved".format(self.__class__.__name__))
 
     def load(self, estimator_dir, is_best=False):
@@ -71,6 +72,7 @@ class DPGAC2Agent(object):
             logger.info("Loading the most recent {}".format(self.__class__.__name__))
             self._estimator_saver_recent.restore(self._sess,
                     tf.train.latest_checkpoint("{}/recent".format(estimator_dir)))
+        self._replay_buffer.load("{}/replay_buffer.pklz".format(estimator_dir))
         logger.info("{} loaded".format(self.__class__.__name__))
 
 
@@ -79,7 +81,7 @@ class DPGAC2Agent(object):
 
     def act(self, observation, reward, termination, episode_start_num, episode_num, episode_num_var, is_learning=False):
         #logger.debug("REPLAY_BUFFER")
-        #logger.debug(self._replay_buffer)
+        #logger.debug(self._replay_buffer.size())
         self._total_reward += reward
         self._step += 1
 

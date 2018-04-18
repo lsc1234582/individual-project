@@ -93,7 +93,7 @@ if __name__ == "__main__":
     # Agent and run parameters
     parser.add_argument("--stop-agent-learning", help="Is Agent learning", action="store_true")
     parser.add_argument("--num-episodes", help="max num of episodes to do while training", type=int, default=500)
-    parser.add_argument("--max-episode-length", help="max length of 1 episode", type=int, default=200)
+    parser.add_argument("--max-episode-length", help="max length of 1 episode", type=int, default=100)
     parser.add_argument("--pe-learning-rate", help="Policy esitmator learning rate", type=float, default=0.0001)
     parser.add_argument("--pe-h1-multiplier", help="Policy estimator hidden layer 1 size multiplier", type=float, default=10)
     parser.add_argument("--pe-h2-multiplier", help="Policy estimator hidden layer 2 size multiplier", type=float, default=10)
@@ -118,7 +118,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-estimators-to-keep", help="maximal number of estimators to keep checkpointing",
             type=int, default=1)
     parser.add_argument("--estimator-save-freq", help="estimator save frequency (per number of episodes)",
-            type=int, default=1)
+            type=int, default=10)
     parser.add_argument("--estimator-load-mode", help="0: load most recent 1: load best", type=int, default=0)
 
     parser.set_defaults(stop_agent_learning=False)
