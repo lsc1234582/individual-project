@@ -10,6 +10,7 @@ ENVS = {
         "Pendulum-v0": gym.make,
         "VREPPushTask": VREPEnvironments.make,
         "VREPPushTaskContact": VREPEnvironments.make,
+        "VREPPushTaskContact2": VREPEnvironments.make,
         }
 
 def MakeEnvironment(env_name):
