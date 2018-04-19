@@ -18,11 +18,13 @@ class VREPPushTaskEnvironment(object):
     MAX_JOINT_VELOCITY = 6.0
     DEFAULT_JOINT_POSITIONS = [np.pi, 1.5 * np.pi, 1.5 * np.pi, np.pi, np.pi, np.pi]
     DEFAULT_CUBOID_POSITION = [0.3, 0.5, 0.05]
+    DEFAULT_TARGET_POSITION = [0.3, 0.8, 0.02]
 
-    def __init__(self, init_joint_pos=None, init_cb_pos=None):
+    def __init__(self, init_joint_pos=None, init_cb_pos=None, init_tg_pos=None):
         logger.info("Creating VREPPushTaskEnvironment")
         self._init_joint_pos = init_joint_pos if not init_joint_pos is None else VREPPushTaskEnvironment.DEFAULT_JOINT_POSITIONS
         self._init_cb_pos = init_cb_pos if not init_cb_pos is None else VREPPushTaskEnvironment.DEFAULT_CUBOID_POSITION
+        self._init_tg_pos = init_tg_pos if not init_tg_pos is None else VREPPushTaskEnvironment.DEFAULT_TARGET_POSITION
         self.action_space = Box((6,), (-1.0,), (1.0,))
         self.observation_space = Box((24,), (-999.0,), (999.0,))
 
@@ -131,6 +133,7 @@ class VREPPushTaskEnvironment(object):
             vrep.simxSetJointPosition(self.client_ID, self.joint_handles[i], self._init_joint_pos[i], vrep.simx_opmode_oneshot)
         vrep.simxSetObjectOrientation(self.client_ID, self.cuboid_handle, -1, [0, 0, 0], vrep.simx_opmode_oneshot)
         vrep.simxSetObjectPosition(self.client_ID, self.cuboid_handle, -1, self._init_cb_pos, vrep.simx_opmode_oneshot)
+        vrep.simxSetObjectPosition(self.client_ID, self.target_plane_handle, -1, self._init_tg_pos, vrep.simx_opmode_oneshot)
         vrep.simxPauseCommunication(self.client_ID, 0)
         vrep.simxGetPingTime(self.client_ID)
 
@@ -225,6 +228,12 @@ def make(env_name):
         return VREPPushTaskEnvironment(
                 init_joint_pos=[np.pi, 5.0, np.pi, np.pi, np.pi, 3.40],
                 init_cb_pos=[0.35, 0.35, 0.05],
+                )
+    elif env_name == "VREPPushTaskContact2":
+        return VREPPushTaskEnvironment(
+                init_joint_pos=[np.pi, 5.0, np.pi, np.pi, np.pi, 3.40],
+                init_cb_pos=[0.35, 0.35, 0.05],
+                init_tg_pos=[0.3, 0.7, 0.02],
                 )
     else:
         raise IOError("Invalid VREP Environment name")
