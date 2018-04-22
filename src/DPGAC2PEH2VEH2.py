@@ -1,9 +1,10 @@
 import argparse
+import copy
 import gym
 import itertools
 import numpy as np
 import tensorflow as tf
-
+import EnvironmentRunner
 #from tensorflow.python import debug as tf_debug
 from Estimators.DPGMultiPerceptronPolicyEstimator import DPGMultiPerceptronPolicyEstimator
 from Estimators.DPGMultiPerceptronValueEstimator import DPGMultiPerceptronValueEstimator
@@ -88,19 +89,15 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
                 replay_buffer_save_freq=args.replay_buffer_save_freq
                 )
 
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="provide arguments for DPGAC2PEH1VEH1 agent")
-
-    # Agent and run parameters
-    parser.add_argument("--stop-agent-learning", help="Is Agent learning", action="store_true")
-    parser.add_argument("--num-episodes", help="max num of episodes to do while training", type=int, default=500)
-    parser.add_argument("--max-episode-length", help="max length of 1 episode", type=int, default=100)
+def getArgParser():
+    # Build parser
+    parser = EnvironmentRunner.getArgParser()
+    # Add Agent parameters
     parser.add_argument("--pe-learning-rate", help="Policy esitmator learning rate", type=float, default=0.0001)
-    parser.add_argument("--pe-h1-multiplier", help="Policy estimator hidden layer 1 size multiplier", type=float, default=10)
-    parser.add_argument("--pe-h2-multiplier", help="Policy estimator hidden layer 2 size multiplier", type=float, default=10)
     parser.add_argument("--ve-learning-rate", help="Value esitmator learning rate", type=float, default=0.001)
+    parser.add_argument("--pe-h1-multiplier", help="Policy estimator hidden layer 1 size multiplier", type=float, default=10)
     parser.add_argument("--ve-h1-multiplier", help="Value estimator hidden layer 1 size multiplier", type=float, default=10)
+    parser.add_argument("--pe-h2-multiplier", help="Policy estimator hidden layer 2 size multiplier", type=float, default=10)
     parser.add_argument("--ve-h2-multiplier", help="Value estimator hidden layer 2 size multiplier", type=float, default=10)
     parser.add_argument("--discount-factor", help="discount factor for critic updates", type=float, default=0.99)
     parser.add_argument("--tau", help="soft target update parameter", type=float, default=0.001)
@@ -108,34 +105,13 @@ if __name__ == "__main__":
             type=int, default=7)
     parser.add_argument("--replay-buffer-size-log", help="max size of the replay buffer as exponent of 10", type=int, default=6)
 
-    # Environment parameters
-    parser.add_argument("--env-name", help="choose the env[VREPPushTask, Pendulum-v0]", required=True)
-    parser.add_argument("--random-seed", help="random seed for repeatability", default=1234)
-    parser.add_argument("--render-env", help="render the env", action="store_true")
+    parser.set_defaults(agent_name="DPGAC2PEH2VEH2")
+    return parser
 
-    # Other parameters
-    parser.add_argument("--summary-dir", help="directory for storing tensorboard info", required=True)
-    parser.add_argument("--estimator-dir", help="directory for loading/storing estimators", required=True)
-    parser.add_argument("--new-estimator", help="if creating new estimators instead of loading old ones", action="store_true")
-    parser.add_argument("--max-estimators-to-keep", help="maximal number of estimators to keep checkpointing",
-            type=int, default=2)
-    parser.add_argument("--estimator-save-freq", help="estimator save frequency (per number of episodes)",
-            type=int, default=50)
-    parser.add_argument("--estimator-load-mode", help="0: load most recent 1: load best", type=int, default=0)
-    parser.add_argument("--replay-buffer-load-dir", help="directory for loading replay buffer")
-    parser.add_argument("--replay-buffer-save-dir", help="directory for storing replay buffer")
-    parser.add_argument("--replay-buffer-save-freq", help="replay buffer save frequency (per number of episodes", type=int,
-            default=500)
+if __name__ == "__main__":
 
-    parser.set_defaults(stop_agent_learning=False)
-    parser.set_defaults(render_env=False)
-    parser.set_defaults(new_estimator=False)
-
-    args = parser.parse_args()
-
-    args.agent_name = "DPGAC2PEH2VEH2"
+    args = getArgParser().parse_args()
 
     logger.info("Starting Agent {} in Environment {}".format(args.agent_name, args.env_name))
-    best_score = runEnvironmentWithAgent(MakeDPGAC2PEH2VEH2, args)
+    runEnvironmentWithAgent(args)
     logger.info("Exiting")
-

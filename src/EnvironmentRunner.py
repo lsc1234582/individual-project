@@ -1,3 +1,4 @@
+import argparse
 import collections
 import tensorflow as tf
 from EnvironmentFactory import EnvironmentContext
@@ -8,7 +9,8 @@ from Utils import SortedDisplayDict
 logger = getModuleLogger(__name__)
 
 
-def runEnvironmentWithAgent(makeAgent, args):
+def runEnvironmentWithAgent(args):
+    from AgentFactory import MakeAgent
     logger.info("Run info:")
     logger.info(SortedDisplayDict(vars(args)))
     config = tf.ConfigProto()
@@ -22,7 +24,7 @@ def runEnvironmentWithAgent(makeAgent, args):
         # To record progress across different training sessions
         global_episode_num = tf.Variable(0, name="global_episode_num", trainable=False)
         logger.info("Making agent {}".format(args.agent_name))
-        agent = makeAgent(session, env, args)
+        agent = MakeAgent(session, env, args)
 
         session.run(tf.global_variables_initializer())
         if args.new_estimator:
@@ -68,6 +70,36 @@ def runEnvironmentWithAgent(makeAgent, args):
     logger.info("Best score: {}".format(agent.score()))
     logger.info("Exiting environment: {}".format(args.env_name))
     return agent.score()
+
+def getArgParser():
+    # Build argument parser
+    parser = argparse.ArgumentParser(description="provide arguments for DPGAC2PEH1VEH1 agent")
+
+    # Session parameters
+    parser.add_argument("--env-name", help="choose the env[VREPPushTask, Pendulum-v0]", required=True)
+    parser.add_argument("--estimator-dir", help="directory for loading/storing estimators", required=True)
+    parser.add_argument("--summary-dir", help="directory for storing tensorboard info", required=True)
+    parser.add_argument("--agent-name", help="name of the agent")
+    parser.add_argument("--stop-agent-learning", help="Is Agent learning", action="store_true")
+    parser.add_argument("--num-episodes", help="max num of episodes to do while training", type=int, default=500)
+    parser.add_argument("--max-episode-length", help="max length of 1 episode", type=int, default=100)
+    parser.add_argument("--random-seed", help="random seed for repeatability", default=1234)
+    parser.add_argument("--render-env", help="render the env", action="store_true")
+    parser.add_argument("--new-estimator", help="if creating new estimators instead of loading old ones", action="store_true")
+    parser.add_argument("--max-estimators-to-keep", help="maximal number of estimators to keep checkpointing",
+            type=int, default=2)
+    parser.add_argument("--estimator-save-freq", help="estimator save frequency (per number of episodes)",
+            type=int, default=50)
+    parser.add_argument("--estimator-load-mode", help="0: load most recent 1: load best", type=int, default=0)
+    parser.add_argument("--replay-buffer-load-dir", help="directory for loading replay buffer")
+    parser.add_argument("--replay-buffer-save-dir", help="directory for storing replay buffer")
+    parser.add_argument("--replay-buffer-save-freq", help="replay buffer save frequency (per number of episodes", type=int,
+            default=500)
+
+    parser.set_defaults(stop_agent_learning=False)
+    parser.set_defaults(render_env=False)
+    parser.set_defaults(new_estimator=False)
+    return parser
 
 if __name__ == "__main__":
     #TODO
