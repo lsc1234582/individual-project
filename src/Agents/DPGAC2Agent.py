@@ -137,12 +137,12 @@ class DPGAC2Agent(object):
                     logger.info("Saving replay buffer")
                     self.saveReplayBuffer(self._replay_buffer_dir)
 
-            # Save summary
-            self._summary_writer.writeSummary({
-                "TotalReward": self._total_reward[0],
-                "AverageMaxQ": self._max_q / float(self._step),
-                "BestAverage": self._best_average,
-                }, episode_num)
+                # Save summary
+                self._summary_writer.writeSummary({
+                    "TotalReward": self._total_reward[0],
+                    "AverageMaxQ": self._max_q / float(self._step),
+                    "BestAverage": self._best_average,
+                    }, episode_num)
 
             # Check for convergence
             if self._last_average and average <= self._last_average:
