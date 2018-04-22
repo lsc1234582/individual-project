@@ -6,3 +6,6 @@ LocalSourceBackup/
 old/
 Experiments/
 results/
+src/VREPEnvInitalPosSession.py
+src/VREPEnvInteractiveSession.py
+
