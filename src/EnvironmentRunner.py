@@ -10,6 +10,7 @@ logger = getModuleLogger(__name__)
 
 
 def runEnvironmentWithAgent(args):
+    # dirty but works
     from AgentFactory import MakeAgent
     logger.info("Run info:")
     logger.info(SortedDisplayDict(vars(args)))
@@ -20,7 +21,6 @@ def runEnvironmentWithAgent(args):
     # Set graph-level random seed to ensure repeatability of experiments
     tf.set_random_seed(args.random_seed)
     with EnvironmentContext(args.env_name) as env, tf.Session(config=config) as session:
-        #global_step = tf.Variable(0, name="global_step", trainable=False)
         # To record progress across different training sessions
         global_episode_num = tf.Variable(0, name="global_episode_num", trainable=False)
         logger.info("Making agent {}".format(args.agent_name))
@@ -79,11 +79,11 @@ def getArgParser():
     parser.add_argument("--env-name", help="choose the env[VREPPushTask, Pendulum-v0]", required=True)
     parser.add_argument("--estimator-dir", help="directory for loading/storing estimators", required=True)
     parser.add_argument("--summary-dir", help="directory for storing tensorboard info", required=True)
-    parser.add_argument("--agent-name", help="name of the agent")
+    #parser.add_argument("--agent-name", help="name of the agent")
     parser.add_argument("--stop-agent-learning", help="Is Agent learning", action="store_true")
     parser.add_argument("--num-episodes", help="max num of episodes to do while training", type=int, default=500)
     parser.add_argument("--max-episode-length", help="max length of 1 episode", type=int, default=100)
-    parser.add_argument("--random-seed", help="random seed for repeatability", default=1234)
+    parser.add_argument("--random-seed", help="random seed for repeatability", type=int, default=1234)
     parser.add_argument("--render-env", help="render the env", action="store_true")
     parser.add_argument("--new-estimator", help="if creating new estimators instead of loading old ones", action="store_true")
     parser.add_argument("--max-estimators-to-keep", help="maximal number of estimators to keep checkpointing",

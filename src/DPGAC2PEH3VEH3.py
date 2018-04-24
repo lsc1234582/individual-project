@@ -108,12 +108,12 @@ def getArgParser():
             type=int, default=7)
     parser.add_argument("--replay-buffer-size-log", help="max size of the replay buffer as exponent of 10", type=int, default=6)
 
-    parser.set_defaults(agent_name="DPGAC2PEH3VEH3")
     return parser
 
 if __name__ == "__main__":
 
     args = getArgParser().parse_args()
+    args.agent_name="DPGAC2PEH3VEH3"
 
     logger.info("Starting Agent {} in Environment {}".format(args.agent_name, args.env_name))
     runEnvironmentWithAgent(args)
