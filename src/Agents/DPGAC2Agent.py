@@ -7,12 +7,11 @@ from Utils import getModuleLogger
 # Module logger
 logger = getModuleLogger(__name__)
 
-class DPGAC2Agent(object):
-
+class AgentBase(object):
     def __init__(self, sess, policy_estimator, value_estimator,
             discount_factor, num_episodes, max_episode_length, minibatch_size, replay_buffer_size, actor_noise, summary_writer,
             estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_dir,
-            replay_buffer_save_freq):
+            replay_buffer_save_freq, num_updates=1):
         self._sess = sess
         self._policy_estimator = policy_estimator
         self._value_estimator = value_estimator
@@ -51,6 +50,9 @@ class DPGAC2Agent(object):
         self._recent_save_freq = recent_save_freq
         self._replay_buffer_dir = replay_buffer_dir
         self._replay_buffer_save_freq = replay_buffer_save_freq
+
+        # Number of updates per training step
+        self._num_updates = num_updates
 
     def save(self, estimator_dir, is_best=False, step=None, write_meta_graph=False):
         if write_meta_graph:
@@ -182,44 +184,57 @@ class DPGAC2Agent(object):
 
         return best_action, termination
 
+class DPGAC2Agent(AgentBase):
+    def __init__(self, sess, policy_estimator, value_estimator,
+            discount_factor, num_episodes, max_episode_length, minibatch_size, replay_buffer_size, actor_noise, summary_writer,
+            estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_dir,
+            replay_buffer_save_freq, num_updates=1):
+         super().__init__(sess, policy_estimator, value_estimator,
+            discount_factor, num_episodes, max_episode_length, minibatch_size, replay_buffer_size, actor_noise, summary_writer,
+            estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_dir,
+            replay_buffer_save_freq, num_updates)
+
     def _train(self):
-        current_state_batch, action_batch, reward_batch, termination_batch, next_state_batch =\
-                self._replay_buffer.sample_batch(self._minibatch_size)
-        current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)
-        action_batch = action_batch.reshape(self._minibatch_size, -1)
-        reward_batch = reward_batch.reshape(self._minibatch_size, -1)
-        next_state_batch = next_state_batch.reshape(self._minibatch_size, -1)
-        # Calculate targets
-        target_q = self._value_estimator.predict_target(
-            next_state_batch, self._policy_estimator.predict_target(next_state_batch))
+        max_qs = []
+        for _ in range(self._num_updates):
+            current_state_batch, action_batch, reward_batch, termination_batch, next_state_batch =\
+                    self._replay_buffer.sample_batch(self._minibatch_size)
+            current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)
+            action_batch = action_batch.reshape(self._minibatch_size, -1)
+            reward_batch = reward_batch.reshape(self._minibatch_size, -1)
+            next_state_batch = next_state_batch.reshape(self._minibatch_size, -1)
+            # Calculate targets
+            target_q = self._value_estimator.predict_target(
+                next_state_batch, self._policy_estimator.predict_target(next_state_batch))
 
-        y_i = []
-        for k in range(self._minibatch_size):
-            if termination_batch[k]:
-                y_i.append(reward_batch[k])
-            else:
-                y_i.append(reward_batch[k] + self._discount_factor * target_q[k])
+            y_i = []
+            for k in range(self._minibatch_size):
+                if termination_batch[k]:
+                    y_i.append(reward_batch[k])
+                else:
+                    y_i.append(reward_batch[k] + self._discount_factor * target_q[k])
 
-        # Update the critic given the targets
-        predicted_q_value, _, ve_loss = self._value_estimator.update(
-            current_state_batch, action_batch, np.reshape(y_i, (self._minibatch_size, 1)))
+            # Update the critic given the targets
+            predicted_q_value, _, ve_loss = self._value_estimator.update(
+                current_state_batch, action_batch, np.reshape(y_i, (self._minibatch_size, 1)))
 
-        self._max_q += np.amax(predicted_q_value)
+            max_qs.append(np.amax(predicted_q_value))
 
-        # Update the actor policy using the sampled gradient
-        a_outs = self._policy_estimator.predict(current_state_batch)
-        grads = self._value_estimator.action_gradients(current_state_batch, a_outs)
-        self._policy_estimator.update(current_state_batch, grads[0])
+            # Update the actor policy using the sampled gradient
+            a_outs = self._policy_estimator.predict(current_state_batch)
+            grads = self._value_estimator.action_gradients(current_state_batch, a_outs)
+            self._policy_estimator.update(current_state_batch, grads[0])
 
-        # Update target networks
-        self._policy_estimator.update_target_network()
-        self._value_estimator.update_target_network()
+            # Update target networks
+            self._policy_estimator.update_target_network()
+            self._value_estimator.update_target_network()
 
-        # Early stop
-        if np.isnan(ve_loss):
-            logger.error("Training: value estimator loss is nan, stop training")
-            self._stop_training = True
+            # Early stop
+            if np.isnan(ve_loss):
+                logger.error("Training: value estimator loss is nan, stop training")
+                self._stop_training = True
 
-        # Some basic summary of training loss
-        #if self._step % 100 == 0:
-        #    self._summary_writer.writeSummary({"ValueEstimatorTrainLoss": ve_loss}, self._step)
+            # Some basic summary of training loss
+            #if self._step % 100 == 0:
+            #    self._summary_writer.writeSummary({"ValueEstimatorTrainLoss": ve_loss}, self._step)
+        self._max_q += max(max_qs)

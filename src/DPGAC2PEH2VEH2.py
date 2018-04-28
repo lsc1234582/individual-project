@@ -86,7 +86,8 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
                 estimator_saver_best=estimator_saver_best,
                 recent_save_freq=args.estimator_save_freq,
                 replay_buffer_dir=args.replay_buffer_save_dir,
-                replay_buffer_save_freq=args.replay_buffer_save_freq
+                replay_buffer_save_freq=args.replay_buffer_save_freq,
+                num_updates=args.num_updates,
                 )
 
 def getArgParser():
@@ -104,6 +105,7 @@ def getArgParser():
     parser.add_argument("--minibatch-size-log", help="size of minibatch for minibatch-SGD as exponent of 2",
             type=int, default=7)
     parser.add_argument("--replay-buffer-size-log", help="max size of the replay buffer as exponent of 10", type=int, default=6)
+    parser.add_argument("--num-updates", help="number of estimator updates per training step", type=int, default=1)
 
     return parser
 
