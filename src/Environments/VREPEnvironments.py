@@ -245,6 +245,21 @@ class VREPPushTaskMultiStepRewardEnvironment(VREPPushTaskEnvironment):
 def make(env_name):
     if env_name == "VREPPushTask":
         return VREPPushTaskEnvironment()
+    elif env_name == "VREPPushTask2":
+        return VREPPushTaskEnvironment(
+                init_cb_pos=[0.3, -0.5, 0.05],
+                init_tg_pos=[0.3, -0.8, 0.002],
+                )
+    elif env_name == "VREPPushTask3":
+        return VREPPushTaskEnvironment(
+                init_cb_pos=[0.55, 0., 0.05],
+                init_tg_pos=[0.8, 0., 0.002],
+                )
+    elif env_name == "VREPPushTask4":
+        return VREPPushTaskEnvironment(
+                init_cb_pos=[-0.55, 0., 0.05],
+                init_tg_pos=[-0.8, 0., 0.002],
+                )
     elif env_name == "VREPPushTaskContact":
         return VREPPushTaskEnvironment(
                 init_joint_pos=[np.pi, 5.0, np.pi, np.pi, np.pi, 3.40],
