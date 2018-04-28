@@ -4,6 +4,7 @@ Create environment.
 New environments need to be registered here.
 """
 import gym
+import numpy as np
 import Environments.VREPEnvironments as VREPEnvironments
 
 ENVS = {
@@ -11,6 +12,8 @@ ENVS = {
         "VREPPushTask": VREPEnvironments.make,
         "VREPPushTaskContact": VREPEnvironments.make,
         "VREPPushTaskContact2": VREPEnvironments.make,
+        "VREPPushTaskMultiStepReward": VREPEnvironments.make,
+        "VREPPushTaskMultiStepRewardContact2": VREPEnvironments.make,
         }
 
 def MakeEnvironment(env_name):
@@ -28,3 +31,14 @@ class EnvironmentContext(object):
         self._env.close()
         return False
 
+if __name__ == "__main__":
+    # Simple interactive program to test/debug environment
+    with EnvironmentContext("VREPPushTaskMultiStepReward") as env:
+        env.reset()
+        for _ in range(50):
+            state, reward, _, _ = env.step(np.zeros((1, 6)))
+            print("state")
+            print(state)
+            print("reward")
+            print(reward)
+            _ = input()

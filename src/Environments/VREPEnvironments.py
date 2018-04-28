@@ -14,8 +14,14 @@ class Box(object):
         self.high = high
 
 class VREPPushTaskEnvironment(object):
+    """
+    Distance unit: m
+    Maximum distance between target and cuboid: 2m; this will affect the reward function for VREPPushTaskMultiStepRewardEnvironment
+    """
     MAX_JOINT_VELOCITY_DELTA = 1.0
     MAX_JOINT_VELOCITY = 6.0
+    CUBOID_SIDE_LENGTH = 0.1
+    GRIPPER_BASE_TO_CLOSED_TIP_DIST = 0.15
     DEFAULT_JOINT_POSITIONS = [np.pi, 1.5 * np.pi, 1.5 * np.pi, np.pi, np.pi, np.pi]
     DEFAULT_CUBOID_POSITION = [0.3, 0.5, 0.05]
     DEFAULT_CUBOID_ORIENTATION = [0., 0., 0.]
@@ -223,6 +229,18 @@ class VREPPushTaskEnvironment(object):
         rewards = np.array(rewards)
         return next_states, rewards, False, None
 
+class VREPPushTaskMultiStepRewardEnvironment(VREPPushTaskEnvironment):
+
+    def __init__(self, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None):
+        super().__init__(init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos)
+
+    def getRewards(self, state, action):
+        gripper_cube_dist = np.sqrt(np.sum(np.square(state[-6:-3])))
+        if gripper_cube_dist >= 0.01 + VREPPushTaskEnvironment.GRIPPER_BASE_TO_CLOSED_TIP_DIST + (VREPPushTaskEnvironment.CUBOID_SIDE_LENGTH * np.sqrt(2) / 2):
+            return -gripper_cube_dist
+        return -gripper_cube_dist + 2 - np.sqrt(np.sum(np.square(state[-3:])))
+
+
 
 def make(env_name):
     if env_name == "VREPPushTask":
@@ -239,5 +257,15 @@ def make(env_name):
                 init_cb_orient=[0., 0., 0.5],
                 init_tg_pos=[0.1, 0.7, 0.002],
                 )
+    elif env_name == "VREPPushTaskMultiStepReward":
+        return VREPPushTaskMultiStepRewardEnvironment()
+    elif env_name == "VREPPushTaskMultiStepRewardContact2":
+        return VREPPushTaskMultiStepRewardEnvironment(
+                init_joint_pos=[np.pi, 5.0, np.pi, np.pi+0.1, np.pi, 3.40],
+                init_cb_pos=[0.33, 0.35, 0.05],
+                init_cb_orient=[0., 0., 0.5],
+                init_tg_pos=[0.1, 0.7, 0.002],
+                )
     else:
         raise IOError("Invalid VREP Environment name")
+
