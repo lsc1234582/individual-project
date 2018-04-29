@@ -236,7 +236,7 @@ class VREPPushTaskMultiStepRewardEnvironment(VREPPushTaskEnvironment):
 
     def getRewards(self, state, action):
         gripper_cube_dist = np.sqrt(np.sum(np.square(state[-6:-3])))
-        if gripper_cube_dist >= 0.01 + VREPPushTaskEnvironment.GRIPPER_BASE_TO_CLOSED_TIP_DIST + (VREPPushTaskEnvironment.CUBOID_SIDE_LENGTH * np.sqrt(2) / 2):
+        if gripper_cube_dist >= 0.1 + VREPPushTaskEnvironment.GRIPPER_BASE_TO_CLOSED_TIP_DIST + (VREPPushTaskEnvironment.CUBOID_SIDE_LENGTH * np.sqrt(2) / 2):
             return -gripper_cube_dist
         return -gripper_cube_dist + 2 - np.sqrt(np.sum(np.square(state[-3:])))
 
