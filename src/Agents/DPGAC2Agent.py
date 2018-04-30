@@ -152,18 +152,18 @@ class AgentBase(object):
                     episode_start_num - 1):
                     logger.info("Saving agent checkpoints")
                     self.save(self._estimator_dir, step=episode_num, write_meta_graph=False)
-                if (not self._replay_buffer_dir is None) and \
-                    (episode_num % self._replay_buffer_save_freq == 0 or episode_num >= self._num_episodes +\
-                    episode_start_num - 1):
-                    logger.info("Saving replay buffer")
-                    self.saveReplayBuffer(self._replay_buffer_dir)
-
                 # Save summary
                 self._summary_writer.writeSummary({
                     "TotalReward": self._total_reward[0],
                     "AverageMaxQ": self._max_q / float(self._step),
                     "BestAverage": self._best_average,
                     }, episode_num)
+            # Save replay buffer
+            if (not self._replay_buffer_dir is None) and \
+                (episode_num % self._replay_buffer_save_freq == 0 or episode_num >= self._num_episodes +\
+                episode_start_num - 1):
+                logger.info("Saving replay buffer")
+                self.saveReplayBuffer(self._replay_buffer_dir)
 
             # Check for convergence
             if self._last_average and average <= self._last_average:
