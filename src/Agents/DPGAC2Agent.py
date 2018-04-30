@@ -225,10 +225,6 @@ class DPGAC2Agent(AgentBase):
             grads = self._value_estimator.action_gradients(current_state_batch, a_outs)
             self._policy_estimator.update(current_state_batch, grads[0])
 
-            # Update target networks
-            self._policy_estimator.update_target_network()
-            self._value_estimator.update_target_network()
-
             # Early stop
             if np.isnan(ve_loss):
                 logger.error("Training: value estimator loss is nan, stop training")
@@ -237,4 +233,8 @@ class DPGAC2Agent(AgentBase):
             # Some basic summary of training loss
             #if self._step % 100 == 0:
             #    self._summary_writer.writeSummary({"ValueEstimatorTrainLoss": ve_loss}, self._step)
+        # Update target networks
+        self._policy_estimator.update_target_network()
+        self._value_estimator.update_target_network()
+
         self._max_q += max(max_qs)
