@@ -48,6 +48,16 @@ class ReplayBuffer(object):
         self._count = 0
         self._buffer = deque()
         self._is_bkup = False
+        self._stats_estimate_sample_size = 1e4
+
+    def __eq__(self, other):
+        if not (self._buffer_size == other._buffer_size and self._count == other._count and self._is_bkup ==\
+                other._is_bkup and self._stats_estimate_sample_size == other._stats_estimate_sample_size):
+            return False
+        for i in range(self._count):
+            if np.any(self._buffer[i][0] != other._buffer[i][0]):
+                return False
+        return True
 
     def save(self, save_path):
         """
@@ -70,6 +80,30 @@ class ReplayBuffer(object):
         with open(os.path.join(save_path, "checkpoint"), "w") as f:
             f.write(rb_file_name)
 
+    def iter(self):
+        """
+        Returns a generator which iterates through deque.
+        """
+        for exp in self._buffer:
+            yield exp
+
+    def mean(self):
+        """
+        Mean of the state, action and reward data
+        An estimate based on a sample of the replay buffer
+        """
+        current_state_batch, action_batch, reward_batch, _, _= self.sample_batch(self._stats_estimate_sample_size)
+
+        return np.mean(current_state_batch, axis=0), np.mean(action_batch, axis=0), np.mean(reward_batch, axis=0)
+
+    def std(self):
+        """
+        Standard deviation of the state, action and reward data
+        An estimate based on a sample of the replay buffer
+        """
+        current_state_batch, action_batch, reward_batch, _, _= self.sample_batch(self._stats_estimate_sample_size)
+
+        return np.std(current_state_batch, axis=0), np.std(action_batch, axis=0), np.std(reward_batch, axis=0)
 
     def load(self, load_path):
         if not os.path.exists(os.path.join(load_path, "checkpoint")):

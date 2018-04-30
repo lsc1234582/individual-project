@@ -31,8 +31,8 @@ class AgentBase(object):
         self._rewards_list = []
         self._replay_buffer = ReplayBuffer(self._replay_buffer_size)
 
-        self._current_state = None
-        self._action = None
+        self._last_state = None
+        self._last_action = None
         # Our objective metric
         self._best_average = None
 
@@ -89,15 +89,34 @@ class AgentBase(object):
     def score(self):
         return self._best_average
 
-    def act(self, observation, reward, termination, episode_start_num, episode_num, episode_num_var, is_learning=False):
-        #logger.debug("REPLAY_BUFFER")
-        #logger.debug(self._replay_buffer.size())
-        self._total_reward += reward
+    def act(self, observation, last_reward, termination, episode_start_num, episode_num, episode_num_var, is_learning=False):
+        self._total_reward += last_reward
         self._step += 1
-
         # Putting a limit on how long the a single trial can run for simplicity
         if self._step > self._max_episode_length:
             termination = True
+
+        current_state = observation.reshape(1, -1)
+
+        # Initialize the last state and action
+        if self._last_state is None:
+            self._last_state = current_state
+            best_action = self._policy_estimator.predict(self._last_state) + self._actor_noise()
+            self._last_action = best_action
+            return best_action, termination
+
+        # Store the last step
+        self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(), last_reward, termination,
+                current_state.squeeze().copy())
+
+        self._last_state = current_state.copy()
+
+        if is_learning and self._replay_buffer.size() >= self._minibatch_size and not self._stop_training:
+            self._train()
+
+        best_action = self._policy_estimator.predict(self._last_state)
+
+        self._last_action = best_action
 
         if termination:
             # Record cumulative reward of trial
@@ -156,31 +175,12 @@ class AgentBase(object):
                 self._stop_training = True
             self._last_average = average
 
+            # Reset for new episode
             self._total_reward = 0.0
             self._max_q = 0.0
             self._step = 0
-
-        current_state = observation.reshape(1, -1)
-
-        # Initialize the last state and action
-        if self._current_state is None:
-            self._current_state = current_state
-            best_action = self._policy_estimator.predict(self._current_state) + self._actor_noise()
-            self._action = best_action
-            return best_action, termination
-
-        # Store the current step
-        self._replay_buffer.add(self._current_state.squeeze().copy(), self._action.squeeze().copy(), reward, termination,
-                current_state.squeeze().copy())
-
-        self._current_state = current_state.copy()
-
-        if is_learning and self._replay_buffer.size() >= self._minibatch_size and not self._stop_training:
-            self._train()
-
-        best_action = self._policy_estimator.predict(self._current_state)
-
-        self._action = best_action
+            self._last_state = None
+            self._last_action = None
 
         return best_action, termination
 

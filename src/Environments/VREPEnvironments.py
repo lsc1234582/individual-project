@@ -159,6 +159,10 @@ class VREPPushTaskEnvironment(object):
         _, cuboid_pos = vrep.simxGetObjectPosition(self.client_ID, self.cuboid_handle, -1, vrep.simx_opmode_streaming)
         _, target_plane_pos = vrep.simxGetObjectPosition(self.client_ID, self.target_plane_handle, -1, vrep.simx_opmode_streaming)
 
+        # this extra synchronisation is necessary for reset
+        vrep.simxSynchronousTrigger(self.client_ID)
+        vrep.simxGetPingTime(self.client_ID)
+
         # destroy dummy arrays for setting up the datastream
         del current_vel, joint_angles, gripper_pos, gripper_orient, cuboid_pos, target_plane_pos
 
