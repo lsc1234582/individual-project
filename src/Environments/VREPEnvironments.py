@@ -25,7 +25,7 @@ class VREPPushTaskEnvironment(object):
     DEFAULT_JOINT_POSITIONS = [np.pi, 1.5 * np.pi, 1.5 * np.pi, np.pi, np.pi, np.pi]
     DEFAULT_CUBOID_POSITION = [0.3, 0.5, 0.05]
     DEFAULT_CUBOID_ORIENTATION = [0., 0., 0.]
-    DEFAULT_TARGET_POSITION = [0.3, 0.8, 0.02]
+    DEFAULT_TARGET_POSITION = [0.3, 0.8, 0.002]
 
     def __init__(self, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None):
         logger.info("Creating VREPPushTaskEnvironment")
