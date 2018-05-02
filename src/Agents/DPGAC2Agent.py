@@ -101,7 +101,10 @@ class AgentBase(object):
         # Initialize the last state and action
         if self._last_state is None:
             self._last_state = current_state
-            best_action = self._policy_estimator.predict(self._last_state) + self._actor_noise()
+            best_action = self._policy_estimator.predict(self._last_state)
+            # Add exploration noise when training
+            if is_learning:
+                best_action += self._actor_noise()
             self._last_action = best_action
             return best_action, termination
 
@@ -115,6 +118,9 @@ class AgentBase(object):
             self._train()
 
         best_action = self._policy_estimator.predict(self._last_state)
+        # Add exploration noise when training
+        if is_learning:
+            best_action += self._actor_noise()
 
         self._last_action = best_action
 
