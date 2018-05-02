@@ -19,11 +19,11 @@ def runEnvironmentWithAgent(args):
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.log_device_placement = False
-    logger.info("Making environment {}".format(args.env_name))
     # Set graph-level random seed to ensure repeatability of experiments
     tf.set_random_seed(args.random_seed)
     random.seed(args.random_seed)
     np.random.seed(args.random_seed)
+    logger.info("Making environment {}".format(args.env_name))
     with EnvironmentContext(args.env_name) as env, tf.Session(config=config) as session:
         # To record progress across different training sessions
         global_episode_num = tf.Variable(0, name="global_episode_num", trainable=False)
