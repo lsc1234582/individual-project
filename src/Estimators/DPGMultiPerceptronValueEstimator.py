@@ -2,7 +2,7 @@ import tensorflow as tf
 import tflearn
 
 class DPGMultiPerceptronValueEstimator(object):
-    """ Deterministic Value Gradient Policy Function Approximator
+    """ Deterministic Value Gradient Value Function Approximator
 
     The estimator in use deploys a multi-layer perceptron
 
