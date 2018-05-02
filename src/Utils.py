@@ -141,7 +141,8 @@ class ReplayBuffer(object):
         else:
             batch_indx = np.arange(self._count)
 
-        for batch_num in range(int(self._count / batch_size)):
+        num_full_batches = int(self._count / batch_size)
+        for batch_num in range(num_full_batches):
             current_state_batch = []
             action_batch = []
             reward_batch = []
@@ -160,25 +161,25 @@ class ReplayBuffer(object):
             yield np.array(current_state_batch), np.array(action_batch), np.array(reward_batch),\
                         np.array(termination_batch), np.array(next_state_batch)
 
-        # Yield the remaining data points if any
-        current_state_batch = []
-        action_batch = []
-        reward_batch = []
-        termination_batch = []
-        next_state_batch = []
+        # TODO: Yield the remaining data points if any
+        # Currently discarding any number of remaining data that is not a multiple of the batch_size
+        #current_state_batch = []
+        #action_batch = []
+        #reward_batch = []
+        #termination_batch = []
+        #next_state_batch = []
 
-        for i in range(int(self._count / batch_size) * batch_size, self._count):
-            current_state, action, reward, termination, next_state = self._buffer[batch_indx[batch_num *
-                batch_size + i]]
-            current_state_batch.append(current_state)
-            action_batch.append(action)
-            reward_batch.append(reward)
-            termination_batch.append(termination)
-            next_state_batch.append(next_state)
+        #for i in range(num_full_batches * batch_size, self._count):
+        #    current_state, action, reward, termination, next_state = self._buffer[batch_indx[i]]
+        #    current_state_batch.append(current_state)
+        #    action_batch.append(action)
+        #    reward_batch.append(reward)
+        #    termination_batch.append(termination)
+        #    next_state_batch.append(next_state)
 
-        if len(current_state_batch) != 0:
-            yield np.array(current_state_batch), np.array(action_batch), np.array(reward_batch),\
-                        np.array(termination_batch), np.array(next_state_batch)
+        #if len(current_state_batch) != 0:
+        #    yield np.array(current_state_batch), np.array(action_batch), np.array(reward_batch),\
+        #                np.array(termination_batch), np.array(next_state_batch)
 
 
     def sample_batch(self, batch_size):
