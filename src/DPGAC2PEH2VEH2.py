@@ -85,7 +85,7 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
                 estimator_saver_recent=estimator_saver_recent,
                 estimator_saver_best=estimator_saver_best,
                 recent_save_freq=args.estimator_save_freq,
-                replay_buffer_dir=args.replay_buffer_save_dir,
+                replay_buffer_save_dir=args.replay_buffer_save_dir,
                 replay_buffer_save_freq=args.replay_buffer_save_freq,
                 num_updates=args.num_updates,
                 )

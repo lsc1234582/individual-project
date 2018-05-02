@@ -10,7 +10,7 @@ logger = getModuleLogger(__name__)
 class AgentBase(object):
     def __init__(self, sess, policy_estimator, value_estimator,
             discount_factor, num_episodes, max_episode_length, minibatch_size, replay_buffer_size, actor_noise, summary_writer,
-            estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_dir,
+            estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, num_updates=1):
         self._sess = sess
         self._policy_estimator = policy_estimator
@@ -48,7 +48,7 @@ class AgentBase(object):
         self._estimator_saver_recent = estimator_saver_recent
         self._estimator_saver_best = estimator_saver_best
         self._recent_save_freq = recent_save_freq
-        self._replay_buffer_dir = replay_buffer_dir
+        self._replay_buffer_save_dir = replay_buffer_save_dir
         self._replay_buffer_save_freq = replay_buffer_save_freq
 
         # Number of updates per training step
@@ -165,11 +165,11 @@ class AgentBase(object):
                     "BestAverage": self._best_average,
                     }, episode_num)
             # Save replay buffer
-            if (not self._replay_buffer_dir is None) and \
+            if (not self._replay_buffer_save_dir is None) and \
                 (episode_num % self._replay_buffer_save_freq == 0 or episode_num >= self._num_episodes +\
                 episode_start_num - 1):
                 logger.info("Saving replay buffer")
-                self.saveReplayBuffer(self._replay_buffer_dir)
+                self.saveReplayBuffer(self._replay_buffer_save_dir)
 
             # Check for convergence
             if self._last_average and average <= self._last_average:
@@ -193,11 +193,11 @@ class AgentBase(object):
 class DPGAC2Agent(AgentBase):
     def __init__(self, sess, policy_estimator, value_estimator,
             discount_factor, num_episodes, max_episode_length, minibatch_size, replay_buffer_size, actor_noise, summary_writer,
-            estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_dir,
+            estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, num_updates=1):
          super().__init__(sess, policy_estimator, value_estimator,
             discount_factor, num_episodes, max_episode_length, minibatch_size, replay_buffer_size, actor_noise, summary_writer,
-            estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_dir,
+            estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, num_updates)
 
     def _train(self):
