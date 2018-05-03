@@ -10,9 +10,10 @@ class MultiPerceptronModelEstimator(object):
     Inputs and outputs are normalised to have 0 mean and std of 1
     """
 
-    def __init__(self, sess, state_dim, action_dim, h_layer_shapes, learning_rate,
+    def __init__(self, sess, state_processor, state_dim, action_dim, h_layer_shapes, learning_rate,
     scope="model_estimator"):
         self._sess = sess
+        self._state_processor = state_processor
         self._state_dim = state_dim
         self._action_dim = action_dim
         self._h_layer_shapes = h_layer_shapes
@@ -68,6 +69,8 @@ class MultiPerceptronModelEstimator(object):
         return inputs, action, outputs
 
     def update(self, inputs, action, actual_outputs):
+        inputs = self._state_processor.transform(inputs)
+        actual_outputs = self._state_processor.transform(actual_outputs)
         return self._sess.run([self._outputs, self._optimize, self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,
@@ -79,4 +82,13 @@ class MultiPerceptronModelEstimator(object):
             self._inputs: inputs,
             self._action: action
         })
-        return outputs
+        return self._state_processor.inverse_transform(outputs)
+
+    def evaluate(self, inputs, action, actual_outputs):
+        inputs = self._state_processor.transform(inputs)
+        actual_outputs = self._state_processor.transform(actual_outputs)
+        return self._sess.run([self._loss], feed_dict={
+            self._inputs: inputs,
+            self._action: action,
+            self._actual_outputs: actual_outputs
+            })
