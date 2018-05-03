@@ -191,7 +191,7 @@ class VREPPushTaskEnvironment(object):
         return self._initialise()
 
 
-    def getRewards(self, state, action):
+    def getRewards(state, action):
         """
             Return the sum of the Euclidean distance between gripper and cuboid and the Euclidean distance between cuboid and targetPlane.
             NB: Rewards should be non-negative
@@ -226,7 +226,7 @@ class VREPPushTaskEnvironment(object):
             next_state = self.getCurrentState(self.client_ID, self.joint_handles, self.gripper_handle, self.cuboid_handle,
                     self.target_plane_handle)
             next_states.append(next_state)
-            rewards.append(self.getRewards(self.state, actions[i]))
+            rewards.append(self.__class__.getRewards(self.state, actions[i]))
             self.state = np.copy(next_state)
 
         next_states = np.concatenate(next_states)
@@ -238,7 +238,7 @@ class VREPPushTaskMultiStepRewardEnvironment(VREPPushTaskEnvironment):
     def __init__(self, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None):
         super().__init__(init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos)
 
-    def getRewards(self, state, action):
+    def getRewards(state, action):
         gripper_cube_dist = np.sqrt(np.sum(np.square(state[-6:-3])))
         if gripper_cube_dist >= 0.1 + VREPPushTaskEnvironment.GRIPPER_BASE_TO_CLOSED_TIP_DIST + (VREPPushTaskEnvironment.CUBOID_SIDE_LENGTH * np.sqrt(2) / 2):
             return -gripper_cube_dist
