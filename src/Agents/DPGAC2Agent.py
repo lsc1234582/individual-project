@@ -4,6 +4,7 @@ import tensorflow as tf
 
 from Utils import ReplayBuffer
 from Utils import getModuleLogger
+from Utils import generateRandomAction
 
 # Module logger
 logger = getModuleLogger(__name__)
@@ -486,7 +487,7 @@ class DPGAC2WithDemoAgent(AgentBase):
         self._max_q += max(max_qs)
 
 class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
-    def __init__(self, sess, policy_estimator, value_estimator, model_estimator,
+    def __init__(self, sess, policy_estimator, value_estimator, model_estimator, model_eval_replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, replay_buffer_size, actor_noise,
             summary_writer, imitation_summary_writer, model_summary_writer,
             estimator_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
@@ -498,13 +499,14 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
             replay_buffer_save_freq, num_updates)
          self._model_summary_writer = model_summary_writer
          self._model_estimator = model_estimator
+         self._model_eval_replay_buffer = model_eval_replay_buffer
          self._best_action_from_model = True
          # The episode number from which use policy solely to obtain best action
          self._stop_best_action_from_model_episode = 100
          # TODO: Number of episodes sampled from real environment
 
          # Number of random actions to take
-         self._num_random_action = 50
+         self._num_random_action = 100
          # Planning horizon for model-based learning
          self._model_plan_horizon = 5
          # (global) model training number, used for writing summaries
@@ -530,9 +532,13 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
             exp = self._replay_buffer.sample_batch(self._minibatch_size)
             current_state_batch, action_batch, reward_batch, termination_batch, next_state_batch = exp
             _, _, model_loss = self._model_estimator.update(current_state_batch, action_batch, next_state_batch - current_state_batch)
-            if i % 10 == 0:
+            if i % 100 == 0:
+                eval_exp = self._model_eval_replay_buffer.sample_batch(self._model_eval_replay_buffer.size())
+                current_state_batch, action_batch, reward_batch, termination_batch, next_state_batch = eval_exp
+                model_eval_loss = self._model_estimator.evaluate(current_state_batch, action_batch, next_state_batch - current_state_batch)
                 self._model_summary_writer.writeSummary({
-                    "ModelTrainLoss": model_loss
+                    "ModelTrainLoss": model_loss,
+                    "ModelEvaluationLoss": model_eval_loss[0]
                     }, self._model_train_step)
             self._model_train_step += 1
 
@@ -584,13 +590,6 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
                 self._policy_estimator.update_target_network()
                 self._value_estimator.update_target_network()
 
-    def _generateRandomAction(self, max_vel):
-        """
-            Generate an array of shape (6,) of range [-max_vel, max_vel].
-        """
-        return np.array([random.random() * max_vel * 2 - max_vel for _ in range(6)])
-
-
     def _getBestAction(self):
         if not self._best_action_from_model:
             return self._policy_estimator.predict(self._last_state) + self._actor_noise()
@@ -607,7 +606,8 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
             first_action = None
             for j in range(self._model_plan_horizon):
                 # TODO: Hard coded max velocity
-                action = self._generateRandomAction(1.0).reshape(1, -1)
+                action = generateRandomAction(1.0).reshape(1, -1)
+                #action = self._policy_estimator.predict(self._last_state) + self._actor_noise()
                 if j == 0:
                     first_action = action
                 next_state = current_state + self._model_estimator.predict(current_state, action)
@@ -617,8 +617,6 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
                 best_action = first_action
                 max_horizon_reward = horizon_reward
         return best_action
-
-
 
     def act(self, observation, last_reward, termination, episode_start_num, episode_num, episode_num_var, is_learning=False):
         self._total_reward += last_reward
@@ -631,14 +629,11 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
 
         # Initial step
         if self._last_state is None:
-            # Train model full
+            # Train model
             self._trainModel(1000)
             # Initialize the last state and action
             self._last_state = current_state
             best_action = self._getBestAction()
-            # TODO:
-            #self._best_action_from_model = not self._best_action_from_model
-            self._best_action_from_model = True
             self._last_action = best_action
             return best_action, termination
 
@@ -652,18 +647,19 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
             self._train()
 
         best_action = self._getBestAction()
-        # Switch between getting action from model and policy, but get from policy exclusively after episode
-        # _stop_best_action_from_model_episode
-        # TODO:
-        #if episode_num >= self._stop_best_action_from_model_episode:
-        #    self._best_action_from_model = False
-        #else:
-        #    self._best_action_from_model = not self._best_action_from_model
-        self._best_action_from_model = True
 
         self._last_action = best_action
 
         if termination:
+            # Switch between getting action from model and policy, but get from policy exclusively after episode
+            # _stop_best_action_from_model_episode
+            # TODO:
+            if episode_num >= self._stop_best_action_from_model_episode:
+                self._best_action_from_model = False
+            else:
+                self._best_action_from_model = not self._best_action_from_model
+            #self._best_action_from_model = True
+
             # Record cumulative reward of trial
             self._rewards_list.append(self._total_reward)
             average = np.mean(self._rewards_list[-self._num_rewards_to_average:])
