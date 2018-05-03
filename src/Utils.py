@@ -37,6 +37,12 @@ def getModuleLogger(module_name):
     logger.addHandler(ch)
     return logger
 
+def generateRandomAction(max_vel):
+    """
+        Generate an array of shape (6,) of range [-max_vel, max_vel].
+    """
+    return np.array([random.random() * max_vel * 2 - max_vel for _ in range(6)])
+
 class SortedDisplayDict(dict):
    def __str__(self):
        return "{" + ", ".join("%r: %r" % (key, self[key]) for key in sorted(self)) + "}"
@@ -58,6 +64,24 @@ class ReplayBuffer(object):
             if np.any(self._buffer[i][0] != other._buffer[i][0]):
                 return False
         return True
+
+    def split(self, split_ratio, shuffle=False):
+        """
+        Spawn two replay buffers from this replay buffer according to the split_ratio
+        """
+        if shuffle:
+            indx = np.random.permutation(self._count)
+        else:
+            indx = np.arange(self._count)
+        replay_buffer_1 = ReplayBuffer(self._buffer_size)
+        replay_buffer_2 = ReplayBuffer(self._buffer_size)
+        for i in range(self._count):
+            if i < int(self._count * split_ratio):
+                replay_buffer_1.add(*self._buffer[indx[i]])
+            else:
+                replay_buffer_2.add(*self._buffer[indx[i]])
+
+        return replay_buffer_1, replay_buffer_2
 
     def save(self, save_path):
         """
