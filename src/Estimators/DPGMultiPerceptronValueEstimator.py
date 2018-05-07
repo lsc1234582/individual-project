@@ -24,6 +24,8 @@ class DPGMultiPerceptronValueEstimator(object):
         # Create the critic network
         self._inputs, self._action, self._out = self._create_critic_network(scope)
 
+        print("hehehe")
+        print(len(tf.trainable_variables()))
         self._network_params = tf.trainable_variables()[num_actor_vars:]
 
         # Target Network
@@ -40,12 +42,21 @@ class DPGMultiPerceptronValueEstimator(object):
                     for i in range(len(self._target_network_params))]
 
         with tf.name_scope(scope):
-            # Network target (y_i)
-            self._predicted_q_value = tf.placeholder(tf.float32, [None, 1], name="predicted_q_value")
+            # Network td_target
+            self._td_target = tf.placeholder(tf.float32, [None, 1], name="predicted_q_value")
             # Define loss and optimization Op
-            self._loss = tflearn.mean_square(self._predicted_q_value, self._out)
+            self._td_error = self._td_target - self._out
+            self._loss = tf.reduce_mean(tf.reduce_sum(tf.square(self._td_error), axis=1))
             self._optimize = tf.train.AdamOptimizer(
                 self._learning_rate).minimize(self._loss, name="optimize")
+
+            # Weighted update
+            self._update_weights = tf.placeholder(tf.float32, [None, 1], name="update_weights")
+            self._weighted_loss = self._update_weights * self._loss
+
+            self._weighted_optimize = tf.train.AdamOptimizer(
+                    self._learning_rate).minimize(self._weighted_loss, name="weighted_optimize")
+
 
             # Get the gradient of the net w.r.t. the action.
             # For each action in the minibatch (i.e., for each x in xs),
@@ -59,7 +70,7 @@ class DPGMultiPerceptronValueEstimator(object):
             #self._inputs = graph.get_tensor_by_name(scope + "/inputs:0")
             #self._action = graph.get_tensor_by_name(scope + "/action:0")
             #self._out = graph.get_tensor_by_name(scope + "/out:0")
-            #self._predicted_q_value = graph.get_tensor_by_name(scope + "/predicted_q_value:0")
+            #self._td_target = graph.get_tensor_by_name(scope + "/predicted_q_value:0")
             #self._loss = graph.get_tensor_by_name(scope + "/loss:0")
             #self._optimize = graph.get_tensor_by_name(scope + "/optimize:0")
             #self._action_grads = graph.get_tensor_by_name(scope + "/action_grads:0")
@@ -103,7 +114,15 @@ class DPGMultiPerceptronValueEstimator(object):
         return self._sess.run([self._out, self._optimize, self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,
-            self._predicted_q_value: predicted_q_value
+            self._td_target: predicted_q_value
+        })
+
+    def update_with_weights(self, inputs, action, td_target, weights):
+        return self._sess.run([self._weighted_optimize, self._out, self._td_error, self._weighted_loss, self._loss], feed_dict={
+            self._inputs: inputs,
+            self._action: action,
+            self._td_target: td_target,
+            self._update_weights: weights
         })
 
     def predict(self, inputs, action):

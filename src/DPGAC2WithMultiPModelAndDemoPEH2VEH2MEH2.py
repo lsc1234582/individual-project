@@ -17,6 +17,7 @@ from Estimators.MultiPerceptronModelEstimator import MultiPerceptronModelEstimat
 from Agents.DPGAC2Agent import DPGAC2WithMultiPModelAndDemoAgent
 from Utils import ReplayBuffer
 from Utils import SummaryWriter
+from Utils import ReplayBuffer
 from Utils import OrnsteinUhlenbeckActionNoise
 from Utils import getModuleLogger
 
@@ -108,6 +109,7 @@ def MakeDPGAC2WithMultiPModelAndDemoPEH2VEH2MEH2(session, env, args):
 
     estimator_saver_recent = tf.train.Saver(max_to_keep=args.max_estimators_to_keep)
     estimator_saver_best = tf.train.Saver(max_to_keep=1)
+    replay_buffer = ReplayBuffer(10 ** args.replay_buffer_size_log)
 
     actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_space_dim))
 
@@ -116,17 +118,17 @@ def MakeDPGAC2WithMultiPModelAndDemoPEH2VEH2MEH2(session, env, args):
                 policy_estimator=policy_estimator,
                 value_estimator=value_estimator,
                 model_estimator=model_estimator,
+                replay_buffer=replay_buffer,
                 model_eval_replay_buffer=replay_buffer_random,
                 discount_factor=args.discount_factor,
                 num_episodes=args.num_episodes,
                 max_episode_length=args.max_episode_length,
                 minibatch_size=2**args.minibatch_size_log,
                 actor_noise=actor_noise,
-                replay_buffer_size=10**args.replay_buffer_size_log,
                 summary_writer=summary_writer,
                 imitation_summary_writer=imitation_summary_writer,
                 model_summary_writer=model_summary_writer,
-                estimator_dir=args.estimator_dir,
+                estimator_save_dir=args.estimator_dir,
                 estimator_saver_recent=estimator_saver_recent,
                 estimator_saver_best=estimator_saver_best,
                 recent_save_freq=args.estimator_save_freq,
@@ -134,6 +136,75 @@ def MakeDPGAC2WithMultiPModelAndDemoPEH2VEH2MEH2(session, env, args):
                 replay_buffer_save_freq=args.replay_buffer_save_freq,
                 num_updates=args.num_updates,
                 )
+
+def runEnvironmentWithAgent(args):
+    # dirty but works
+    from AgentFactory import MakeAgent
+    logger.info("Run info:")
+    logger.info(SortedDisplayDict(vars(args)))
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    config.log_device_placement = False
+    # Set graph-level random seed to ensure repeatability of experiments
+    tf.set_random_seed(args.random_seed)
+    random.seed(args.random_seed)
+    np.random.seed(args.random_seed)
+    logger.info("Making environment {}".format(args.env_name))
+    with EnvironmentContext(args.env_name) as env, tf.Session(config=config) as session:
+        # To record progress across different training sessions
+        global_episode_num = tf.Variable(0, name="global_episode_num", trainable=False)
+        logger.info("Making agent {}".format(args.agent_name))
+        agent = MakeAgent(session, env, args)
+
+        session.run(tf.global_variables_initializer())
+        if args.new_estimator:
+            logger.info("Saving session meta file to {}".format(args.estimator_dir))
+            agent.save(args.estimator_dir, step=0, write_meta_graph=True)
+        else:
+            logger.info("Restoring agent from {}".format(args.estimator_dir))
+            agent.load(args.estimator_dir, is_best=(args.estimator_load_mode==1))
+        if not args.replay_buffer_load_dir is None:
+            logger.info("Restoring replay buffer from {}".format(args.replay_buffer_load_dir))
+            agent.loadReplayBuffer(args.replay_buffer_load_dir)
+
+
+        episode_start = session.run(global_episode_num) + 1
+        logger.info("Continueing at episode {}".format(episode_start))
+        # Run the environment feedback loop
+        for episode_num in range(episode_start, episode_start + args.num_episodes):
+            observation = env.reset()
+            reward = 0.0
+            done = False
+            action, done = agent.act(observation, reward, done, episode_start, episode_num, global_episode_num,
+                    is_learning=(not args.stop_agent_learning))
+
+            while not done:
+                if episode_num - episode_start <= 10 or episode_num >= int((2 * episode_start + args.num_episodes)/2):
+                    if args.render_env:
+                        env.render()
+                    observation, reward, done, _ = env.step(action)
+                else:
+                    reward = np.array([env.__class__.getRewards(observation, action)])
+                    observation += agent._model_estimator.predict(observation.reshape(1, -1), action.reshape(1,
+                        -1)).squeeze()
+                action, done = agent.act(observation, reward, done, episode_start, episode_num, global_episode_num,
+                                         is_learning=(not args.stop_agent_learning))
+                #logger.debug("Observation")
+                #logger.debug(observation)
+                #logger.debug("Action")
+                #logger.debug(action)
+                #logger.debug("Reward")
+                #logger.debug(reward)
+                #logger.debug("Done")
+                #logger.debug(done)
+            # No need to push forward when the agent stops training and has collected enough episodes to obtain a score
+            if agent._stop_training and agent.score():
+                logger.warn("Agent stopped training. Exiting experiment...")
+                break
+
+    logger.info("Best score: {}".format(agent.score()))
+    logger.info("Exiting environment: {}".format(args.env_name))
+    return agent.score()
 
 def getArgParser():
     # Build argument parser
@@ -186,70 +257,6 @@ def getArgParser():
     parser.add_argument("--replay-buffer-random-load-dir", help="directory for loading replay buffer random")
 
     return parser
-
-def runEnvironmentWithAgent(args):
-    # dirty but works
-    from AgentFactory import MakeAgent
-    logger.info("Run info:")
-    logger.info(SortedDisplayDict(vars(args)))
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
-    config.log_device_placement = False
-    # Set graph-level random seed to ensure repeatability of experiments
-    tf.set_random_seed(args.random_seed)
-    random.seed(args.random_seed)
-    np.random.seed(args.random_seed)
-    logger.info("Making environment {}".format(args.env_name))
-    with EnvironmentContext(args.env_name) as env, tf.Session(config=config) as session:
-        # To record progress across different training sessions
-        global_episode_num = tf.Variable(0, name="global_episode_num", trainable=False)
-        logger.info("Making agent {}".format(args.agent_name))
-        agent = MakeAgent(session, env, args)
-
-        session.run(tf.global_variables_initializer())
-        if args.new_estimator:
-            logger.info("Saving session meta file to {}".format(args.estimator_dir))
-            agent.save(args.estimator_dir, step=0, write_meta_graph=True)
-        else:
-            logger.info("Restoring agent from {}".format(args.estimator_dir))
-            agent.load(args.estimator_dir, is_best=(args.estimator_load_mode==1))
-        if not args.replay_buffer_load_dir is None:
-            logger.info("Restoring replay buffer from {}".format(args.replay_buffer_load_dir))
-            agent.loadReplayBuffer(args.replay_buffer_load_dir)
-
-
-        episode_start = session.run(global_episode_num) + 1
-        logger.info("Continueing at episode {}".format(episode_start))
-        # Run the environment feedback loop
-        for episode_num in range(episode_start, episode_start + args.num_episodes):
-            observation = env.reset()
-            reward = 0.0
-            done = False
-            action, done = agent.act(observation, reward, done, episode_start, episode_num, global_episode_num,
-                    is_learning=(not args.stop_agent_learning))
-
-            while not done:
-                if args.render_env:
-                    env.render()
-                observation, reward, done, _ = env.step(action)
-                action, done = agent.act(observation, reward, done, episode_start, episode_num, global_episode_num,
-                                         is_learning=(not args.stop_agent_learning))
-                #logger.debug("Observation")
-                #logger.debug(observation)
-                #logger.debug("Action")
-                #logger.debug(action)
-                #logger.debug("Reward")
-                #logger.debug(reward)
-                #logger.debug("Done")
-                #logger.debug(done)
-            # No need to push forward when the agent stops training and has collected enough episodes to obtain a score
-            if agent._stop_training and agent.score():
-                logger.warn("Agent stopped training. Exiting experiment...")
-                break
-
-    logger.info("Best score: {}".format(agent.score()))
-    logger.info("Exiting environment: {}".format(args.env_name))
-    return agent.score()
 
 if __name__ == "__main__":
 

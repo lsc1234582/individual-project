@@ -54,7 +54,7 @@ if __name__ == "__main__":
     print(replay_buffer.size())
     print("last entry")
     print(replay_buffer._buffer[-1])
-    injectGaussianNoise(args.resample_amount, replay_buffer, resampled_replay_buffer, 0, 1e-2)
+    injectGaussianNoise(args.resample_amount, replay_buffer, resampled_replay_buffer, 0, 1e-3)
 
     resampled_replay_buffer.save(args.replay_buffer_save_dir)
 

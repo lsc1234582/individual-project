@@ -11,6 +11,7 @@ from Estimators.DPGMultiPerceptronValueEstimator import DPGMultiPerceptronValueE
 from Agents.DPGAC2Agent import DPGAC2Agent
 from Utils import SummaryWriter
 from Utils import OrnsteinUhlenbeckActionNoise
+from Utils import ReplayBuffer
 from Utils import getModuleLogger
 from EnvironmentRunner import runEnvironmentWithAgent
 
@@ -68,6 +69,8 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
     estimator_saver_recent = tf.train.Saver(max_to_keep=args.max_estimators_to_keep)
     estimator_saver_best = tf.train.Saver(max_to_keep=1)
 
+    replay_buffer = ReplayBuffer(10 ** args.replay_buffer_size_log)
+
     actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_space_dim))
 
     return DPGAC2Agent(
@@ -79,9 +82,9 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
                 max_episode_length=args.max_episode_length,
                 minibatch_size=2**args.minibatch_size_log,
                 actor_noise=actor_noise,
-                replay_buffer_size=10**args.replay_buffer_size_log,
+                replay_buffer=replay_buffer,
                 summary_writer=summary_writer,
-                estimator_dir=args.estimator_dir,
+                estimator_save_dir=args.estimator_dir,
                 estimator_saver_recent=estimator_saver_recent,
                 estimator_saver_best=estimator_saver_best,
                 recent_save_freq=args.estimator_save_freq,

@@ -14,6 +14,8 @@ def runEnvironmentWithAgent(args):
             for step in range(args.max_episode_length):
                 action = generateRandomAction(1.0)
                 next_state, reward, done, _ = env.step(action.reshape(1, -1))
+                if step == args.max_episode_length - 1:
+                    done = True
                 rb.add(state, action, reward, done, next_state)
                 state = np.copy(next_state)
                 #logger.debug("Observation")
