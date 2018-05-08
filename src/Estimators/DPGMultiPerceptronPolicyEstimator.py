@@ -93,12 +93,16 @@ class DPGMultiPerceptronPolicyEstimator(object):
             net = inputs
             for i in range(len(self._h_layer_shapes)):
                 net = tflearn.fully_connected(net, self._h_layer_shapes[i])
+                # Add l2 regularizer
+                tflearn.helpers.regularizer.add_weights_regularizer(net.W, "L2")
                 net = tflearn.layers.normalization.batch_normalization(net)
                 net = tflearn.activations.relu(net)
             # Final layer weights are init to Uniform[-3e-3, 3e-3]
             w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
             out = tflearn.fully_connected(
                 net, self._action_dim, activation='tanh', weights_init=w_init, name="out")
+            # Add l2 regularizer
+            tflearn.helpers.regularizer.add_weights_regularizer(out.W, "L2")
             # Scale output to -action_bound to action_bound
             scaled_out = tf.multiply(out, self._action_bound, name="scaled_out")
         return inputs, out, scaled_out
