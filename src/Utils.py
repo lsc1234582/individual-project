@@ -77,9 +77,18 @@ class ReplayBuffer(object):
 
     def _do_load(self, f):
         states = pkl.load(f)
-        self._storage = states["_storage"]
-        self._maxsize = states["_maxsize"]
-        self._next_idx = states["_next_idx"]
+        if "_storage" in states:
+            self._storage = states["_storage"]
+        else:
+            self._storage = states["_buffer"]
+        if "_maxsize" in states:
+            self._maxsize = states["_maxsize"]
+        else:
+            self._maxsize = states["_buffer_size"]
+        if "_nest_idx" in states:
+            self._next_idx = states["_next_idx"]
+        else:
+            self._next_idx = states["_count"]
         self._is_bkup = states["_is_bkup"]
         self._stats_estimate_sample_size = states["_stats_estimate_sample_size"]
 
@@ -208,10 +217,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     def _do_load(self, f):
         states = super(PrioritizedReplayBuffer, self)._do_load(f)
 
-        self._alpha = states["_alpha"]
-        self._it_sum = states["_it_sum"]
-        self._it_min = states["_it_min"]
-        self._max_priority = states["_max_priority"]
+        if "_alpha" in states:
+            self._alpha = states["_alpha"]
+        if "_it_sum" in states:
+            self._it_sum = states["_it_sum"]
+        if "_it_min" in states:
+            self._it_min = states["_it_min"]
+        if "_max_priority" in states:
+            self._max_priority = states["_max_priority"]
 
         return states
 
@@ -240,6 +253,29 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             idx = self._it_sum.find_prefixsum_idx(mass)
             res.append(idx)
         return res
+
+    #def sample_1_n_step_mix_batch(self, batch_size, beta):
+    #    """ Sample a batch_size number of experiences which supports  1-step and n-step return calculation
+    #    Returns
+    #    -------
+    #    obs_batch: np.array
+    #        batch of observations
+    #    act_batch: np.array
+    #        batch of actions executed given obs_batch
+    #    rew_batches: [np.array]
+    #        rewards received from the sampled state till the end of a rollout, list is of length batch_size
+    #    next_obs_batch: np.array
+    #        next set of observations after obs_batch and act_batch, could be the same as last_obs_batch
+    #    last_obs_batch: np.array
+    #        last set of observations seen within the specified rollout
+    #    weights: np.array
+    #        Array of shape (batch_size,) and dtype np.float32
+    #        denoting importance weight of each sampled transition
+    #    idxes: np.array
+    #        Array of shape (batch_size,) and dtype np.int32
+    #        idexes in buffer of sampled experiences
+    #    """
+    #    return
 
     def sample_batch(self, batch_size, beta):
         """Sample a batch of experiences.
