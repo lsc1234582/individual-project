@@ -29,8 +29,8 @@ def runEnvironmentWithAgent(args):
         global_episode_num = tf.Variable(0, name="global_episode_num", trainable=False)
         logger.info("Making agent {}".format(args.agent_name))
         agent = MakeAgent(session, env, args)
+        agent.initialize()
 
-        session.run(tf.global_variables_initializer())
         if args.new_estimator:
             logger.info("Saving session meta file to {}".format(args.estimator_dir))
             agent.save(args.estimator_dir, step=0, write_meta_graph=True)

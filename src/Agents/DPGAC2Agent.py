@@ -60,6 +60,16 @@ class AgentBase(object):
         # Number of updates per training step
         self._num_updates = num_updates
 
+    def initialize(self):
+        """
+        Target networks share the same parameters with the behaviourial networks at the beginning
+        """
+        logger.info("Initializing agent {}".format(self.__class__.__name__))
+        self._sess.run(tf.global_variables_initializer())
+        self._policy_estimator.update_target_network(tau=1.0)
+        self._value_estimator.update_target_network(tau=1.0)
+
+
     def save(self, estimator_save_dir, is_best=False, step=None, write_meta_graph=False):
         if write_meta_graph:
             tf.train.export_meta_graph(filename="{}/{}.meta".format(estimator_save_dir, self.__class__.__name__))
@@ -94,6 +104,9 @@ class AgentBase(object):
 
     def score(self):
         return self._best_average
+
+    def reset(self):
+        self._actor_noise.reset()
 
     def act(self, observation, last_reward, termination, episode_start_num, episode_num, episode_num_var, is_learning=False):
         self._total_reward += last_reward
@@ -196,6 +209,7 @@ class AgentBase(object):
             self._step = 0
             self._last_state = None
             self._last_action = None
+            self.reset()
 
         return best_action, termination
 

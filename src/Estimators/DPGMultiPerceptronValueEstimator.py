@@ -45,12 +45,14 @@ class DPGMultiPerceptronValueEstimator(object):
 
         self._target_network_params = tf.trainable_variables()[(len(self._network_params) + num_actor_vars):]
 
+        # Make tau a placeholder so we can plug in different values within this class
+        self._tau_var = tf.placeholder(tf.float32, [], name="tau")
         with tf.name_scope(scope + "_target/"):
             # Op for periodically updating target network with online network
             # weights with regularization
             self._update_target_network_params = \
-                [self._target_network_params[i].assign(tf.multiply(self._network_params[i], self._tau) \
-                + tf.multiply(self._target_network_params[i], 1. - self._tau))
+                [self._target_network_params[i].assign(tf.multiply(self._network_params[i], self._tau_var) \
+                + tf.multiply(self._target_network_params[i], 1. - self._tau_var))
                     for i in range(len(self._target_network_params))]
 
         with tf.name_scope(scope):
@@ -169,5 +171,9 @@ class DPGMultiPerceptronValueEstimator(object):
             self._action: actions
         })
 
-    def update_target_network(self):
-        self._sess.run(self._update_target_network_params)
+    def update_target_network(self, tau=None):
+        if tau == None:
+            tau = self._tau
+        self._sess.run(self._update_target_network_params, feed_dict={
+            self._tau_var: tau
+            })

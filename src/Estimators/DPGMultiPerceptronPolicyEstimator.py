@@ -141,9 +141,11 @@ class DPGMultiPerceptronPolicyEstimator(object):
             self._target_inputs: inputs
         })
 
-    def update_target_network(self):
+    def update_target_network(self, tau=None):
+        if tau == None:
+            tau = self._tau
         self._sess.run(self._update_target_network_params, feed_dict={
-            self._tau_var: self._tau
+            self._tau_var: tau
             })
 
     def get_num_trainable_vars(self):
