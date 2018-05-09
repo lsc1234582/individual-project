@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tflearn
+from Utils import normalize, denormalize
 
 class DPGMultiPerceptronPolicyEstimator(object):
     """ Deterministic Policy Gradient Policy Function Approximator
@@ -13,13 +14,14 @@ class DPGMultiPerceptronPolicyEstimator(object):
     between -action_bound and action_bound
     """
 
-    def __init__(self, sess, state_dim, action_dim, h_layer_shapes, learning_rate, action_bound, tau,
+    def __init__(self, sess, state_rms, state_dim, action_dim, h_layer_shapes, learning_rate, action_bound, state_range, tau,
             minibatch_size, imitation_learning_rate=-1, imitation_minibatch_size=-1, scope="policy_estimator"):
         self._sess = sess
         self._state_dim = state_dim
         self._action_dim = action_dim
         self._h_layer_shapes = h_layer_shapes
         self._action_bound = action_bound
+        self._state_range = state_range
         self._learning_rate = learning_rate
         self._tau = tau
         self._minibatch_size = minibatch_size
@@ -27,6 +29,8 @@ class DPGMultiPerceptronPolicyEstimator(object):
         self._imitation_learning_rate = imitation_learning_rate if imitation_learning_rate != -1 else learning_rate
         self._imitation_minibatch_size = imitation_minibatch_size if imitation_minibatch_size != -1 else\
         minibatch_size
+
+        self._state_rms = state_rms
 
         # Actor Network
         self._inputs, _, self._scaled_out = self._create_actor_network(scope)
@@ -90,7 +94,10 @@ class DPGMultiPerceptronPolicyEstimator(object):
     def _create_actor_network(self, scope):
         with tf.name_scope(scope):
             inputs = tflearn.input_data(shape=(None, self._state_dim), name="inputs")
-            net = inputs
+            # Normalize input(states)
+            normalized_inputs = tf.clip_by_value(normalize(inputs, self._state_rms), self._state_range[0],
+                    self._state_range[1])
+            net = normalized_inputs
             for i in range(len(self._h_layer_shapes)):
                 net = tflearn.fully_connected(net, self._h_layer_shapes[i])
                 # Add l2 regularizer

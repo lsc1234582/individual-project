@@ -9,6 +9,17 @@ import tensorflow as tf
 from collections import deque
 from SegmentTree import SumSegmentTree, MinSegmentTree
 
+def normalize(x, stats):
+    if stats is None:
+        return x
+    return (x - stats.mean) / stats.std
+
+
+def denormalize(x, stats):
+    if stats is None:
+        return x
+    return x * stats.std + stats.mean
+
 def featurize_state(state, scaler):
     """
     Returns the featurized representation for a state.

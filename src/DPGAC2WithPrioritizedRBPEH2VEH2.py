@@ -17,6 +17,7 @@ from Utils import OrnsteinUhlenbeckActionNoise
 from Utils import PrioritizedReplayBuffer
 from Utils import getModuleLogger
 from EnvironmentRunner import runEnvironmentWithAgent
+from mpi_running_mean_std import RunningMeanStd
 
 # Module logger
 logger = getModuleLogger(__name__)
@@ -27,6 +28,25 @@ def MakeDPGAC2WithPrioritizedRBPEH2VEH2(session, env, args):
     # The number of actions the agent can make
     action_space_dim = env.action_space.shape[0]
     assert(env.action_space.high[0] == -env.action_space.low[0])
+
+    # TODO: remove hardcoded value
+    normalize_states = True
+    normalize_returns = False
+    state_range = [-999, 999]
+    return_range = [-999, 999]
+    # State normalization.
+    if normalize_states:
+        with tf.variable_scope('state_rms'):
+            state_rms = RunningMeanStd(shape=env.observation_space.shape)
+    else:
+        state_rms = None
+
+    # Return normalization.
+    if normalize_returns:
+        with tf.variable_scope('return_rms'):
+            return_rms = RunningMeanStd()
+    else:
+        return_rms = None
 
     # The shapes of the hidden layers of the policy estimator
     pe_layer_shapes = [
@@ -46,22 +66,26 @@ def MakeDPGAC2WithPrioritizedRBPEH2VEH2(session, env, args):
             state_dim=observation_space_dim,
             action_dim=action_space_dim,
             h_layer_shapes=pe_layer_shapes,
+            state_range=state_range,
             learning_rate=args.pe_learning_rate,
             action_bound=env.action_space.high[0],
             tau=args.tau,
-            minibatch_size=2**args.minibatch_size_log
+            minibatch_size=2**args.minibatch_size_log,
+            state_rms = state_rms
             )
 
-    print("TO:!!!")
-    print(policy_estimator.get_num_trainable_vars())
     value_estimator = DPGMultiPerceptronValueEstimator(
             sess=session,
             state_dim=observation_space_dim,
             action_dim=action_space_dim,
             h_layer_shapes=ve_layer_shapes,
+            state_range=state_range,
+            return_range=return_range,
             learning_rate=args.ve_learning_rate,
             tau=args.tau,
-            num_actor_vars=policy_estimator.get_num_trainable_vars()
+            num_actor_vars=policy_estimator.get_num_trainable_vars(),
+            state_rms = state_rms,
+            return_rms = return_rms
             )
 
     summary_writer = SummaryWriter(session, args.summary_dir,[
@@ -80,6 +104,7 @@ def MakeDPGAC2WithPrioritizedRBPEH2VEH2(session, env, args):
 
     actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_space_dim))
 
+
     return DPGAC2WithPrioritizedRB(
                 sess=session,
                 policy_estimator=policy_estimator,
@@ -97,6 +122,10 @@ def MakeDPGAC2WithPrioritizedRBPEH2VEH2(session, env, args):
                 recent_save_freq=args.estimator_save_freq,
                 replay_buffer_save_dir=args.replay_buffer_save_dir,
                 replay_buffer_save_freq=args.replay_buffer_save_freq,
+                normalize_states=normalize_states,
+                state_rms=state_rms,
+                normalize_returns=normalize_returns,
+                return_rms=return_rms,
                 num_updates=args.num_updates,
                 )
 

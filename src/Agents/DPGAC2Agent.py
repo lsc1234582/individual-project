@@ -13,7 +13,7 @@ class AgentBase(object):
     def __init__(self, sess, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
-            replay_buffer_save_freq, num_updates=1):
+            replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1):
         self._sess = sess
         self._policy_estimator = policy_estimator
         self._value_estimator = value_estimator
@@ -51,6 +51,11 @@ class AgentBase(object):
         self._recent_save_freq = recent_save_freq
         self._replay_buffer_save_dir = replay_buffer_save_dir
         self._replay_buffer_save_freq = replay_buffer_save_freq
+
+        self._normalize_states = normalize_states
+        self._state_rms = state_rms
+        self._normalize_returns = normalize_returns
+        self._return_rms = return_rms
 
         # Number of updates per training step
         self._num_updates = num_updates
@@ -112,6 +117,9 @@ class AgentBase(object):
         # Store the last step
         self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(), last_reward,
                 current_state.squeeze().copy(), termination)
+
+        if self._normalize_states:
+            self._state_rms.update(np.array([self._last_state]))
 
         self._last_state = current_state.copy()
 
@@ -195,11 +203,11 @@ class DPGAC2Agent(AgentBase):
     def __init__(self, sess, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
-            replay_buffer_save_freq, num_updates=1):
+            replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1):
          super().__init__(sess, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
-            replay_buffer_save_freq, num_updates)
+            replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates)
 
     def _train(self):
         max_qs = []
@@ -211,7 +219,7 @@ class DPGAC2Agent(AgentBase):
             reward_batch = reward_batch.reshape(self._minibatch_size, -1)
             next_state_batch = next_state_batch.reshape(self._minibatch_size, -1)
             # Calculate targets
-            target_q = self._value_estimator.predict_target(
+            predicted_target_q = self._value_estimator.predict_target(
                 next_state_batch, self._policy_estimator.predict_target(next_state_batch))
 
             td_target = []
@@ -219,14 +227,17 @@ class DPGAC2Agent(AgentBase):
                 if termination_batch[k]:
                     td_target.append(reward_batch[k])
                 else:
-                    td_target.append(reward_batch[k] + self._discount_factor * target_q[k])
+                    td_target.append(reward_batch[k] + self._discount_factor * predicted_target_q[k])
 
             # Update the critic given the targets
-            predicted_q_value, _, ve_loss = self._value_estimator.update(
+            predicted_q, _, ve_loss = self._value_estimator.update(
                 current_state_batch, action_batch, np.reshape(td_target, (self._minibatch_size, 1)))
 
+            # NB: Use td_target instead of predicted_target_q or predicted_q because it's not pure estimate (reward as samples)
+            if self._normalize_returns:
+                self._return_rms.update(td_target.flatten())
 
-            max_qs.append(np.amax(predicted_q_value))
+            max_qs.append(np.amax(predicted_q))
 
             # Update the actor policy using the sampled gradient
             a_outs = self._policy_estimator.predict(current_state_batch)
@@ -252,11 +263,11 @@ class DPGAC2WithDemoAgent(AgentBase):
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise,
             summary_writer, imitation_summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
-            replay_buffer_save_freq, num_updates=1):
+            replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1):
          super().__init__(sess, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
-            replay_buffer_save_freq, num_updates)
+            replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates)
          self._imitation_summary_writer = imitation_summary_writer
 
 
@@ -297,7 +308,7 @@ class DPGAC2WithDemoAgent(AgentBase):
                 reward_batch = reward_batch.reshape(self._minibatch_size, -1)
                 next_state_batch = next_state_batch.reshape(self._minibatch_size, -1)
                 # Calculate targets
-                target_q = self._value_estimator.predict_target(
+                predicted_target_q = self._value_estimator.predict_target(
                     next_state_batch, self._policy_estimator.predict_target(next_state_batch))
 
                 td_target = []
@@ -305,13 +316,13 @@ class DPGAC2WithDemoAgent(AgentBase):
                     if termination_batch[k]:
                         td_target.append(reward_batch[k])
                     else:
-                        td_target.append(reward_batch[k] + self._discount_factor * target_q[k])
+                        td_target.append(reward_batch[k] + self._discount_factor * predicted_target_q[k])
 
                 # Update the critic given the targets
-                predicted_q_value, _, ve_loss = self._value_estimator.update(
+                predicted_q, _, ve_loss = self._value_estimator.update(
                     current_state_batch, action_batch, np.reshape(td_target, (self._minibatch_size, 1)))
 
-                max_qs.append(np.amax(predicted_q_value))
+                max_qs.append(np.amax(predicted_q))
 
                 # Update the actor policy using the sampled gradient
                 a_outs = self._policy_estimator.predict(current_state_batch)
@@ -361,6 +372,9 @@ class DPGAC2WithDemoAgent(AgentBase):
         # Store the last step
         self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(), last_reward,
                 current_state.squeeze().copy(), termination)
+        if self._normalize_states:
+            self._state_rms.update(np.array([self._last_state]))
+
 
         self._last_state = current_state.copy()
 
@@ -450,7 +464,7 @@ class DPGAC2WithDemoAgent(AgentBase):
             reward_batch = reward_batch.reshape(self._minibatch_size, -1)
             next_state_batch = next_state_batch.reshape(self._minibatch_size, -1)
             # Calculate targets
-            target_q = self._value_estimator.predict_target(
+            predicted_target_q = self._value_estimator.predict_target(
                 next_state_batch, self._policy_estimator.predict_target(next_state_batch))
 
             td_target = []
@@ -458,13 +472,17 @@ class DPGAC2WithDemoAgent(AgentBase):
                 if termination_batch[k]:
                     td_target.append(reward_batch[k])
                 else:
-                    td_target.append(reward_batch[k] + self._discount_factor * target_q[k])
+                    td_target.append(reward_batch[k] + self._discount_factor * predicted_target_q[k])
+
+            # NB: Use td_target instead of predicted_target_q or predicted_q because it's not pure estimate (reward as samples)
+            if self._normalize_returns:
+                self._return_rms.update(td_target.flatten())
 
             # Update the critic given the targets
-            predicted_q_value, _, ve_loss = self._value_estimator.update(
+            predicted_q, _, ve_loss = self._value_estimator.update(
                 current_state_batch, action_batch, np.reshape(td_target, (self._minibatch_size, 1)))
 
-            max_qs.append(np.amax(predicted_q_value))
+            max_qs.append(np.amax(predicted_q))
 
             # Update the actor policy using the sampled gradient
             a_outs = self._policy_estimator.predict(current_state_batch)
@@ -491,12 +509,12 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise,
             summary_writer, imitation_summary_writer, model_summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
-            replay_buffer_save_freq, num_updates=1):
+            replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1):
          super().__init__(sess, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise,
             summary_writer, imitation_summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
-            replay_buffer_save_freq, num_updates)
+            replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates)
          self._model_summary_writer = model_summary_writer
          self._model_estimator = model_estimator
          self._model_eval_replay_buffer = model_eval_replay_buffer
@@ -556,7 +574,7 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
                 reward_batch = reward_batch.reshape(self._minibatch_size, -1)
                 next_state_batch = next_state_batch.reshape(self._minibatch_size, -1)
                 # Calculate targets
-                target_q = self._value_estimator.predict_target(
+                predicted_target_q = self._value_estimator.predict_target(
                     next_state_batch, self._policy_estimator.predict_target(next_state_batch))
 
                 td_target = []
@@ -564,13 +582,13 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
                     if termination_batch[k]:
                         td_target.append(reward_batch[k])
                     else:
-                        td_target.append(reward_batch[k] + self._discount_factor * target_q[k])
+                        td_target.append(reward_batch[k] + self._discount_factor * predicted_target_q[k])
 
                 # Update the critic given the targets
-                predicted_q_value, _, ve_loss = self._value_estimator.update(
+                predicted_q, _, ve_loss = self._value_estimator.update(
                     current_state_batch, action_batch, np.reshape(td_target, (self._minibatch_size, 1)))
 
-                max_qs.append(np.amax(predicted_q_value))
+                max_qs.append(np.amax(predicted_q))
 
                 # Update the actor policy using the sampled gradient
                 a_outs = self._policy_estimator.predict(current_state_batch)
@@ -641,6 +659,9 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
         # Store the last step
         self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(), last_reward,
                 current_state.squeeze().copy(), termination)
+        if self._normalize_states:
+            self._state_rms.update(np.array([self._last_state]))
+
 
         self._last_state = current_state.copy()
 
@@ -736,7 +757,7 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
             reward_batch = reward_batch.reshape(self._minibatch_size, -1)
             next_state_batch = next_state_batch.reshape(self._minibatch_size, -1)
             # Calculate targets
-            target_q = self._value_estimator.predict_target(
+            predicted_target_q = self._value_estimator.predict_target(
                 next_state_batch, self._policy_estimator.predict_target(next_state_batch))
 
             td_target = []
@@ -744,13 +765,16 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
                 if termination_batch[k]:
                     td_target.append(reward_batch[k])
                 else:
-                    td_target.append(reward_batch[k] + self._discount_factor * target_q[k])
+                    td_target.append(reward_batch[k] + self._discount_factor * predicted_target_q[k])
 
             # Update the critic given the targets
-            predicted_q_value, _, ve_loss = self._value_estimator.update(
+            predicted_q, _, ve_loss = self._value_estimator.update(
                 current_state_batch, action_batch, np.reshape(td_target, (self._minibatch_size, 1)))
+            # NB: Use td_target instead of predicted_target_q or predicted_q because it's not pure estimate (reward as samples)
+            if self._normalize_returns:
+                self._return_rms.update(td_target.flatten())
 
-            max_qs.append(np.amax(predicted_q_value))
+            max_qs.append(np.amax(predicted_q))
 
             # Update the actor policy using the sampled gradient
             a_outs = self._policy_estimator.predict(current_state_batch)
@@ -777,11 +801,11 @@ class DPGAC2WithPrioritizedRB(AgentBase):
     def __init__(self, sess, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
-            replay_buffer_save_freq, num_updates=1):
+            replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1):
          super().__init__(sess, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
-            replay_buffer_save_freq, num_updates)
+            replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates)
          # Beta used in prioritized rb for importance sampling
          # TODO: Remove hardcoded value
          self._replay_buffer_beta = 1.0
@@ -796,7 +820,7 @@ class DPGAC2WithPrioritizedRB(AgentBase):
             reward_batch = reward_batch.reshape(self._minibatch_size, -1)
             next_state_batch = next_state_batch.reshape(self._minibatch_size, -1)
             # Calculate targets
-            target_q = self._value_estimator.predict_target(
+            predicted_target_q = self._value_estimator.predict_target(
                 next_state_batch, self._policy_estimator.predict_target(next_state_batch))
 
             td_target = []
@@ -804,10 +828,10 @@ class DPGAC2WithPrioritizedRB(AgentBase):
                 if termination_batch[k]:
                     td_target.append(reward_batch[k])
                 else:
-                    td_target.append(reward_batch[k] + self._discount_factor * target_q[k])
+                    td_target.append(reward_batch[k] + self._discount_factor * predicted_target_q[k])
 
             # Update the critic given the targets with weights
-            _, predicted_q_value, td_error, ve_weighted_loss, ve_loss = self._value_estimator.update_with_weights(
+            _, predicted_q, td_error, ve_weighted_loss, ve_loss = self._value_estimator.update_with_weights(
                 current_state_batch, action_batch, np.reshape(td_target, (self._minibatch_size, 1)),
                 weights.reshape(self._minibatch_size, 1))
 
@@ -821,10 +845,13 @@ class DPGAC2WithPrioritizedRB(AgentBase):
             #print("ahdaowdaiwododhawido")
             #print(priorities.shape)
             #print(len(indexes))
-            self._replay_buffer.update_priorities(indexes, priorities.squeeze())
+            self._replay_buffer.update_priorities(indexes, priorities.flatten())
 
+            # NB: Use td_target instead of predicted_target_q or predicted_q because it's not pure estimate (reward as samples)
+            if self._normalize_returns:
+                self._return_rms.update(td_target.flatten())
 
-            max_qs.append(np.amax(predicted_q_value))
+            max_qs.append(np.amax(predicted_q))
 
             # Update the actor policy using the sampled gradient
             a_outs = self._policy_estimator.predict(current_state_batch)

@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tflearn
+from Utils import normalize, denormalize
 
 class DPGMultiPerceptronValueEstimator(object):
     """ Deterministic Value Gradient Value Function Approximator
@@ -12,24 +13,35 @@ class DPGMultiPerceptronValueEstimator(object):
     NB: This implementation assumes a particular architecture
     """
 
-    def __init__(self, sess, state_dim, action_dim, h_layer_shapes, learning_rate, tau, num_actor_vars,
-    scope="value_estimator"):
+    def __init__(self, sess, state_rms, return_rms, state_dim, action_dim, h_layer_shapes, state_range, return_range, learning_rate, tau, num_actor_vars,
+            scope="value_estimator"):
         self._sess = sess
         self._state_dim = state_dim
         self._action_dim = action_dim
         self._h_layer_shapes = h_layer_shapes
+        self._state_range = state_range
+        self._return_range = return_range
         self._learning_rate = learning_rate
         self._tau = tau
+
+        self._state_rms = state_rms
+        self._return_rms = return_rms
 
         # Create the critic network
         self._inputs, self._action, self._out = self._create_critic_network(scope)
 
-        print("hehehe")
-        print(len(tf.trainable_variables()))
+        # Denormalized out
+        self._denorm_out = denormalize(tf.clip_by_value(self._out, self._return_range[0],
+                    self._return_range[1]), self._return_rms)
+
         self._network_params = tf.trainable_variables()[num_actor_vars:]
 
         # Target Network
         self._target_inputs, self._target_action, self._target_out = self._create_critic_network(scope + "_target")
+
+        # Denormalized target out
+        self._denorm_target_out = denormalize(tf.clip_by_value(self._target_out, self._return_range[0],
+                    self._return_range[1]), self._return_rms)
 
         self._target_network_params = tf.trainable_variables()[(len(self._network_params) + num_actor_vars):]
 
@@ -43,9 +55,13 @@ class DPGMultiPerceptronValueEstimator(object):
 
         with tf.name_scope(scope):
             # Network td_target
-            self._td_target = tf.placeholder(tf.float32, [None, 1], name="predicted_q_value")
+            self._td_target = tf.placeholder(tf.float32, [None, 1], name="td_target")
+
+            self._normalized_td_target = tf.clip_by_value(normalize(self._td_target, self._return_rms), self._return_range[0],
+                    self._return_range[1])
             # Define loss and optimization Op
-            self._td_error = self._td_target - self._out
+            # NB: self._out is defined to be normalized
+            self._td_error = self._normalized_td_target - self._out
             self._loss = tf.reduce_mean(tf.reduce_sum(tf.square(self._td_error), axis=1))
             self._optimize = tf.train.AdamOptimizer(
                 self._learning_rate).minimize(self._loss, name="optimize")
@@ -89,7 +105,11 @@ class DPGMultiPerceptronValueEstimator(object):
         with tf.name_scope(scope):
             inputs = tflearn.input_data(shape=(None, self._state_dim), name="inputs")
             action = tflearn.input_data(shape=(None, self._action_dim), name="action")
-            net = inputs
+            # Normalized input(states)
+            normalized_inputs = tf.clip_by_value(normalize(inputs, self._state_rms), self._state_range[0],
+                    self._state_range[1])
+
+            net = normalized_inputs
 
             for i in range(len(self._h_layer_shapes) - 1):
                 net = tflearn.fully_connected(net, self._h_layer_shapes[i])
@@ -112,17 +132,19 @@ class DPGMultiPerceptronValueEstimator(object):
             # Weights are init to Uniform[-3e-3, 3e-3]
             w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
             out = tflearn.fully_connected(net, 1, weights_init=w_init, name="out")
+            out = tf.clip_by_value(normalize(out, self._return_rms), self._return_range[0],
+                    self._return_range[1])
         return inputs, action, out
 
     def update(self, inputs, action, predicted_q_value):
-        return self._sess.run([self._out, self._optimize, self._loss], feed_dict={
+        return self._sess.run([self._denorm_out, self._optimize, self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,
             self._td_target: predicted_q_value
         })
 
     def update_with_weights(self, inputs, action, td_target, weights):
-        return self._sess.run([self._weighted_optimize, self._out, self._td_error, self._weighted_loss, self._loss], feed_dict={
+        return self._sess.run([self._weighted_optimize, self._denorm_out, self._td_error, self._weighted_loss, self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,
             self._td_target: td_target,
@@ -130,13 +152,13 @@ class DPGMultiPerceptronValueEstimator(object):
         })
 
     def predict(self, inputs, action):
-        return self._sess.run(self._out, feed_dict={
+        return self._sess.run(self._denorm_out, feed_dict={
             self._inputs: inputs,
             self._action: action
         })
 
     def predict_target(self, inputs, action):
-        return self._sess.run(self._target_out, feed_dict={
+        return self._sess.run(self._denorm_target_out, feed_dict={
             self._target_inputs: inputs,
             self._target_action: action
         })
