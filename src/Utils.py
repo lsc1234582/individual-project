@@ -27,6 +27,17 @@ def featurize_state(state, scaler):
     scaled = scaler.transform(state)
     return scaled
 
+def get_scalar(var):
+    if type(var) == np.ndarray:
+        print("ahwdoawiodhaiowdha")
+        print(var.shape)
+        assert(var.shape == (1,))
+        return var[0]
+    elif type(var) == list or type(var) == tuple:
+        assert(np.array(var).shape == 1)
+        return var[0]
+    return var
+
 def getModuleLogger(module_name):
     """
     Universal configuration of logger across all modules.
@@ -171,7 +182,7 @@ class ReplayBuffer(object):
         # Locate the first transition from the episode which includes rand_idx transition
         start_idx = rand_idx - 1
         _, _, _, _, done = self._storage[start_idx]
-        while not done and start_idx >= 0:
+        while not get_scalar(done) and start_idx >= 0:
             start_idx -= 1
             _, _, _, _, done = self._storage[start_idx]
         start_idx += 1
@@ -183,7 +194,7 @@ class ReplayBuffer(object):
         # Locate the one past last transition from the episode which includes rand_idx transition
         end_idx = rand_idx
         _, _, _, _, done = self._storage[end_idx]
-        while not done and end_idx < len(self._storage) - 1:
+        while not get_scalar(done) and end_idx < len(self._storage) - 1:
             end_idx += 1
             _, _, _, _, done = self._storage[end_idx]
         end_idx += 1
