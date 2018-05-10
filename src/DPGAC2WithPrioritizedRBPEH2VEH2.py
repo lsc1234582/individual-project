@@ -84,8 +84,8 @@ def MakeDPGAC2WithPrioritizedRBPEH2VEH2(session, env, args):
             learning_rate=args.ve_learning_rate,
             tau=args.tau,
             num_actor_vars=policy_estimator.get_num_trainable_vars(),
-            state_rms = state_rms,
-            return_rms = return_rms
+            state_rms=state_rms,
+            return_rms=return_rms
             )
 
     summary_writer = SummaryWriter(session, args.summary_dir,[
