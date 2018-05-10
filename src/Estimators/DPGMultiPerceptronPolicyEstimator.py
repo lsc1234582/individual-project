@@ -70,7 +70,7 @@ class DPGMultiPerceptronPolicyEstimator(object):
             # MSE loss for imitation learning
             self._imitation_loss = tflearn.mean_square(self._actual_outputs, self._scaled_out)
             self._imitation_optimize = tf.train.AdamOptimizer(self._imitation_learning_rate).\
-                    minimize(self._imitation_loss, name="imitation_optimize")
+                    minimize(self._imitation_loss, var_list=self._network_params, name="imitation_optimize")
 
         self._num_trainable_vars = len(
             self._network_params) + len(self._target_network_params)

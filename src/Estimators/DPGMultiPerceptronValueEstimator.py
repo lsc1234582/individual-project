@@ -13,7 +13,8 @@ class DPGMultiPerceptronValueEstimator(object):
     NB: This implementation assumes a particular architecture
     """
 
-    def __init__(self, sess, state_rms, return_rms, state_dim, action_dim, h_layer_shapes, state_range, return_range, learning_rate, tau, num_actor_vars,
+    def __init__(self, sess, state_rms, return_rms, state_dim, action_dim, h_layer_shapes, state_range, return_range,
+            learning_rate, tau, num_actor_vars, lambda2=0.5,
             scope="value_estimator"):
         self._sess = sess
         self._state_dim = state_dim
@@ -23,6 +24,8 @@ class DPGMultiPerceptronValueEstimator(object):
         self._return_range = return_range
         self._learning_rate = learning_rate
         self._tau = tau
+        # Weights of the n-step term in the loss function
+        self._lambda2 = lambda2
 
         self._state_rms = state_rms
         self._return_rms = return_rms
@@ -56,6 +59,7 @@ class DPGMultiPerceptronValueEstimator(object):
                     for i in range(len(self._target_network_params))]
 
         with tf.name_scope(scope):
+            opt = tf.train.AdamOptimizer(self._learning_rate)
             # Network td_target
             self._td_target = tf.placeholder(tf.float32, [None, 1], name="td_target")
 
@@ -63,18 +67,27 @@ class DPGMultiPerceptronValueEstimator(object):
                     self._return_range[1])
             # Define loss and optimization Op
             # NB: self._out is defined to be normalized
+            # TODO: denormalize _td_error for outputing?
             self._td_error = self._normalized_td_target - self._out
-            self._loss = tf.reduce_mean(tf.reduce_sum(tf.square(self._td_error), axis=1))
-            self._optimize = tf.train.AdamOptimizer(
-                self._learning_rate).minimize(self._loss, name="optimize")
+            td_error_sq = tf.square(self._td_error)
+            self._loss = tf.reduce_mean(td_error_sq)
+            self._optimize = opt.minimize(self._loss, var_list=self._network_params, name="optimize")
 
             # Weighted update
             self._update_weights = tf.placeholder(tf.float32, [None, 1], name="update_weights")
-            self._weighted_loss = self._update_weights * self._loss
+            weighted_td_error_sq = self._update_weights * td_error_sq
+            self._weighted_loss = tf.reduce_mean(weighted_td_error_sq)
 
-            self._weighted_optimize = tf.train.AdamOptimizer(
-                    self._learning_rate).minimize(self._weighted_loss, name="weighted_optimize")
+            self._weighted_optimize = opt.minimize(self._weighted_loss, var_list=self._network_params, name="weighted_optimize")
 
+            # Weighted n-1 step update
+            # The loss function is defined in the paper [Leverage...]
+            self._nb_ns_td_target = tf.placeholder(tf.int32, [], name="nb_ns_td_target")
+            self._n1s_loss = tf.reduce_mean(td_error_sq[:-self._nb_ns_td_target])\
+                    + self._lambda2 * tf.reduce_mean(td_error_sq[-self._nb_ns_td_target:])
+            self._weighted_n1s_loss = tf.reduce_mean(weighted_td_error_sq[:-self._nb_ns_td_target])\
+                    + self._lambda2 * tf.reduce_mean(weighted_td_error_sq[-self._nb_ns_td_target:])
+            self._weighted_n1s_optimize = opt.minimize(self._weighted_n1s_loss, var_list=self._network_params, name="weighted_n1s_optimize")
 
             # Get the gradient of the net w.r.t. the action.
             # For each action in the minibatch (i.e., for each x in xs),
@@ -151,6 +164,25 @@ class DPGMultiPerceptronValueEstimator(object):
             self._action: action,
             self._td_target: td_target,
             self._update_weights: weights
+        })
+
+    def update_with_weights_and_n1s_td(self, inputs, action, td_target, weights, nb_ns_td_target):
+        """
+        Args
+        -----
+        inputs: Combined 1-step and n-step batches, where the [-nb_ns_td_target:] are n-step batches
+        action: Combined 1-step and n-step batches, where the [-nb_ns_td_target:] are n-step batches
+        td_target: ...
+        weights: ...
+        nb_ns_td_target: Number of N-step td targets in the batch
+        """
+        return self._sess.run([self._weighted_n1s_optimize, self._denorm_out, self._td_error, self._weighted_n1s_loss,\
+            self._n1s_loss], feed_dict={
+            self._inputs: inputs,
+            self._action: action,
+            self._td_target: td_target,
+            self._update_weights: weights,
+            self._nb_ns_td_target: nb_ns_td_target
         })
 
     def predict(self, inputs, action):

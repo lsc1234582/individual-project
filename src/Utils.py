@@ -166,6 +166,37 @@ class ReplayBuffer(object):
             dones.append(done)
         return np.array(obses_t), np.array(actions), np.array(rewards), np.array(obses_tp1), np.array(dones)
 
+    def _retrieve_eps_from_transition(self, rand_idx, episode_length=None):
+
+        # Locate the first transition from the episode which includes rand_idx transition
+        start_idx = rand_idx - 1
+        _, _, _, _, done = self._storage[start_idx]
+        while not done and start_idx >= 0:
+            start_idx -= 1
+            _, _, _, _, done = self._storage[start_idx]
+        start_idx += 1
+        if episode_length is not None:
+            if start_idx + episode_length <= len(self._storage):
+                return list(range(start_idx, start_idx + episode_length))
+            return list(range(start_idx, len(self._storage)))
+
+        # Locate the one past last transition from the episode which includes rand_idx transition
+        end_idx = rand_idx
+        _, _, _, _, done = self._storage[end_idx]
+        while not done and end_idx < len(self._storage) - 1:
+            end_idx += 1
+            _, _, _, _, done = self._storage[end_idx]
+        end_idx += 1
+        return list(range(start_idx, end_idx))
+
+    def sample_episode(self, episode_length=None):
+        """Sample a complete episode rollout.
+        """
+        rand_idx = random.randint(0, len(self._storage) - 1)
+
+        idxes = self._retrieve_eps_from_transition(rand_idx, episode_length)
+        return self._encode_sample(idxes)
+
     def sample_batch(self, batch_size):
         """Sample a batch of experiences.
 
@@ -339,6 +370,28 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         weights = np.array(weights)
         encoded_sample = self._encode_sample(idxes)
         return tuple(list(encoded_sample) + [weights, idxes])
+
+    def sample_episode(self, beta, episode_length=None):
+        """Sample a complete episode rollout
+        """
+        assert beta > 0
+
+        rand_idx = self._sample_proportional(1)[0]
+
+        idxes = self._retrieve_eps_from_transition(rand_idx, episode_length)
+
+        weights = []
+        p_min = self._it_min.min() / self._it_sum.sum()
+        max_weight = (p_min * len(self._storage)) ** (-beta)
+
+        for idx in idxes:
+            p_sample = self._it_sum[idx] / self._it_sum.sum()
+            weight = (p_sample * len(self._storage)) ** (-beta)
+            weights.append(weight / max_weight)
+        weights = np.array(weights)
+        encoded_sample = self._encode_sample(idxes)
+        return tuple(list(encoded_sample) + [weights, idxes])
+
 
     def update_priorities(self, idxes, priorities):
         """Update priorities of sampled transitions.
