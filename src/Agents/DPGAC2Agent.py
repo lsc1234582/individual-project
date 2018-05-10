@@ -880,18 +880,6 @@ class DPGAC2WithPrioritizedRB(AgentBase):
                 current_state_batch, action_batch, np.reshape(td_target, (-1, 1)),
                 weights.reshape(-1, 1), ns_current_state_batch.shape[0])
 
-            # Calculate and update new priorities for sampled transitions
-            #TODO: Remove hardcoded value
-            lambda3 = 0.5
-            epislon = 1e-3
-            action_gradients = self._value_estimator.action_gradients(current_state_batch, action_batch)
-            priorities = np.square(td_error) + lambda3 * np.square(np.linalg.norm(action_gradients)) + epislon
-
-            #print("ahdaowdaiwododhawido")
-            #print(priorities.shape)
-            #print(len(indexes))
-            self._replay_buffer.update_priorities(indexes, priorities.flatten())
-
             # NB: Use td_target instead of predicted_target_q or predicted_q because it's not pure estimate (reward as samples)
             if self._normalize_returns:
                 self._return_rms.update(td_target.flatten())
@@ -902,6 +890,20 @@ class DPGAC2WithPrioritizedRB(AgentBase):
             a_outs = self._policy_estimator.predict(current_state_batch)
             grads = self._value_estimator.action_gradients(current_state_batch, a_outs)
             self._policy_estimator.update(current_state_batch, grads[0])
+
+            # Calculate and update new priorities for sampled transitions
+            #TODO: Remove hardcoded value
+            lambda3 = 0.5
+            epislon = 1e-3
+            priorities = np.square(td_error) + lambda3 * np.square(np.linalg.norm(grads)) + epislon
+            print("TDERROR!!!")
+            print(td_error)
+
+            #print("ahdaowdaiwododhawido")
+            #print(priorities.shape)
+            #print(len(indexes))
+            self._replay_buffer.update_priorities(indexes, priorities.flatten())
+
 
             # Early stop
             if np.isnan(ve_loss):
