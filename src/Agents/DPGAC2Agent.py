@@ -848,7 +848,7 @@ class DPGAC2WithPrioritizedRB(AgentBase):
             # Calculate n-step targets
             ns_current_state_batch, ns_action_batch, ns_reward_batch, ns_next_state_batch, ns_termination_batch,\
                     ns_weights, ns_indexes =\
-                        self._replay_buffer.sample_episode(self._replay_buffer_beta, self._max_episode_length)
+                        self._replay_buffer.sample_episode(self._replay_buffer_beta)
             ns_current_state_batch = ns_current_state_batch.reshape(-1, self._value_estimator._state_dim)
             ns_action_batch = ns_action_batch.reshape(-1, self._value_estimator._action_dim)
             ns_reward_batch = ns_reward_batch.reshape(-1, 1)

@@ -29,8 +29,6 @@ def featurize_state(state, scaler):
 
 def get_scalar(var):
     if type(var) == np.ndarray:
-        print("ahwdoawiodhaiowdha")
-        print(var.shape)
         assert(var.shape == (1,))
         return var[0]
     elif type(var) == list or type(var) == tuple:
@@ -93,7 +91,6 @@ class ReplayBuffer(object):
         for i in range(len(self)):
             for j in range(len(self._storage[i])):
                 if np.any(self._storage[i][j] != other._storage[i][j]):
-                    print("nana, {}, {}".format(i, j))
                     return False
         return True
 
@@ -107,7 +104,7 @@ class ReplayBuffer(object):
             self._maxsize = states["_maxsize"]
         else:
             self._maxsize = states["_buffer_size"]
-        if "_nest_idx" in states:
+        if "_next_idx" in states:
             self._next_idx = states["_next_idx"]
         else:
             self._next_idx = states["_count"]
@@ -177,7 +174,7 @@ class ReplayBuffer(object):
             dones.append(done)
         return np.array(obses_t), np.array(actions), np.array(rewards), np.array(obses_tp1), np.array(dones)
 
-    def _retrieve_eps_from_transition(self, rand_idx, episode_length=None):
+    def _retrieve_eps_from_transition(self, rand_idx):
 
         # Locate the first transition from the episode which includes rand_idx transition
         start_idx = rand_idx - 1
@@ -186,10 +183,6 @@ class ReplayBuffer(object):
             start_idx -= 1
             _, _, _, _, done = self._storage[start_idx]
         start_idx += 1
-        if episode_length is not None:
-            if start_idx + episode_length <= len(self._storage):
-                return list(range(start_idx, start_idx + episode_length))
-            return list(range(start_idx, len(self._storage)))
 
         # Locate the one past last transition from the episode which includes rand_idx transition
         end_idx = rand_idx
@@ -200,12 +193,12 @@ class ReplayBuffer(object):
         end_idx += 1
         return list(range(start_idx, end_idx))
 
-    def sample_episode(self, episode_length=None):
+    def sample_episode(self):
         """Sample a complete episode rollout.
         """
         rand_idx = random.randint(0, len(self._storage) - 1)
 
-        idxes = self._retrieve_eps_from_transition(rand_idx, episode_length)
+        idxes = self._retrieve_eps_from_transition(rand_idx)
         return self._encode_sample(idxes)
 
     def sample_batch(self, batch_size):
@@ -255,17 +248,25 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         assert alpha >= 0
         self._alpha = alpha
 
-        it_capacity = 1
-        while it_capacity < size:
-            it_capacity *= 2
+        self._it_capacity = 1
+        while self._it_capacity < size:
+            self._it_capacity *= 2
 
-        self._it_sum = SumSegmentTree(it_capacity)
-        self._it_min = MinSegmentTree(it_capacity)
+        self._it_sum = SumSegmentTree(self._it_capacity)
+        self._it_min = MinSegmentTree(self._it_capacity)
         self._max_priority = 1.0
 
     def __eq__(self, other):
         return super().__eq__(other) and (self._it_sum == other._it_sum and self._it_min == other._it_min\
                 and self._max_priority == other._max_priority)
+
+
+    def clear(self):
+        super(PrioritizedReplayBuffer, self).clear()
+        del self._it_sum, self._it_min
+        self._it_sum = SumSegmentTree(self._it_capacity)
+        self._it_min = MinSegmentTree(self._it_capacity)
+        self._max_priority = 1.0
 
     def _do_load(self, f):
         states = super(PrioritizedReplayBuffer, self)._do_load(f)
@@ -278,6 +279,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self._it_min = states["_it_min"]
         if "_max_priority" in states:
             self._max_priority = states["_max_priority"]
+        if "_it_capacity" in states:
+            self._it_capacity = states["_it_capacity"]
 
         return states
 
@@ -382,14 +385,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         encoded_sample = self._encode_sample(idxes)
         return tuple(list(encoded_sample) + [weights, idxes])
 
-    def sample_episode(self, beta, episode_length=None):
+    def sample_episode(self, beta):
         """Sample a complete episode rollout
         """
         assert beta > 0
 
         rand_idx = self._sample_proportional(1)[0]
 
-        idxes = self._retrieve_eps_from_transition(rand_idx, episode_length)
+        idxes = self._retrieve_eps_from_transition(rand_idx)
 
         weights = []
         p_min = self._it_min.min() / self._it_sum.sum()

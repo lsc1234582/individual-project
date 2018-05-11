@@ -64,6 +64,48 @@ class PrioritizedReplayBufferTest(unittest.TestCase):
 
         self.assertEqual(rb, rb_load)
 
+    def testSampleEpisode(self):
+        rb_max_size = int(1e3)
+        alpha = 0.3
+        num_priorities = 10
+
+        rb = PrioritizedReplayBuffer(rb_max_size, alpha)
+        for i in range(99):
+            rb.add(i, i, i, i, False)
+        rb.add(99, 99, 99, 99, True)
+
+        for i in range(100, 249):
+            rb.add(i, i, i, i, False)
+        rb.add(249, 249, 249, 249, True)
+
+        data_col1 = np.arange(100)
+        data_col2 = np.arange(100, 250)
+        data_col3 = np.arange(100, 200)
+
+        s0, a0, r0, s1, d, _, _ = rb.sample_episode(1.0)
+
+        self.assertTrue(np.all(s0==data_col1) or np.all(s0==data_col2))
+        self.assertTrue(np.all(a0==data_col1) or np.all(s0==data_col2))
+        self.assertTrue(np.all(r0==data_col1) or np.all(s0==data_col2))
+        self.assertTrue(np.all(s1==data_col1) or np.all(s0==data_col2))
+
+        rb.clear()
+        for i in range(99):
+            rb.add(i, i, i, i, False)
+        rb.add(99, 99, 99, 99, True)
+
+        for i in range(100, 199):
+            rb.add(i, i, i, i, False)
+        rb.add(199, 199, 199, 199, True)
+
+        s0, a0, r0, s1, d, _, _ = rb.sample_episode(1.0)
+
+        self.assertTrue(np.all(s0==data_col1) or np.all(s0==data_col3))
+        self.assertTrue(np.all(a0==data_col1) or np.all(s0==data_col3))
+        self.assertTrue(np.all(r0==data_col1) or np.all(s0==data_col3))
+        self.assertTrue(np.all(s1==data_col1) or np.all(s0==data_col3))
+
+
 if __name__ == '__main__':
     unittest.main()
 
