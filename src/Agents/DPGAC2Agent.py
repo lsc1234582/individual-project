@@ -845,51 +845,10 @@ class DPGAC2WithPrioritizedRB(AgentBase):
                 else:
                     td_target.append(reward_batch[k] + self._discount_factor * predicted_target_q[k])
 
-            # Calculate n-step targets
-            ns_current_state_batch, ns_action_batch, ns_reward_batch, ns_next_state_batch, ns_termination_batch,\
-                    ns_weights, ns_indexes =\
-                        self._replay_buffer.sample_episode(self._replay_buffer_beta)
-            ns_current_state_batch = ns_current_state_batch.reshape(-1, self._value_estimator._state_dim)
-            ns_action_batch = ns_action_batch.reshape(-1, self._value_estimator._action_dim)
-            ns_reward_batch = ns_reward_batch.reshape(-1, 1)
-            ns_next_state_batch = ns_next_state_batch.reshape(-1, self._value_estimator._state_dim)
-
-            #TODO: Use action from the last transition instead? Since it's already available. Investigate
-            ns_td_target = []
-            if ns_next_state_batch.shape[0] > 1:
-                ns_predicted_last_target_q = self._value_estimator.predict_target(
-                        ns_next_state_batch[-2, :].reshape(1, -1), self._policy_estimator.predict_target(ns_next_state_batch[-2, :].reshape(1, -1)))
-
-                # Note that start bootstrapping from the second-to-last transition, ie use estimate on the last 'current
-                # state' and use pure reward for the last transition
-                last_td_target = ns_predicted_last_target_q
-                for k in range(ns_current_state_batch.shape[0] - 1, -1, -1):
-                    if ns_termination_batch[k]:
-                        ns_td_target.insert(0, ns_reward_batch[k])
-                    else:
-                        last_td_target = ns_reward_batch[k] + self._discount_factor * last_td_target
-                        ns_td_target.insert(0, last_td_target)
-            elif ns_next_state_batch.shape[0] == 1:
-                ns_td_target.append(ns_reward_batch[0])
-            else:
-                raise ValueError("Empty episode batch")
-
-            # Combine 1-step batches with n-step batches
-            current_state_batch = np.concatenate([current_state_batch, ns_current_state_batch], axis=0)
-            action_batch = np.concatenate([action_batch, ns_action_batch], axis=0)
-            td_target = td_target + ns_td_target
-            weights = np.concatenate([weights, ns_weights], axis=0)
-            indexes = indexes + ns_indexes
-            #print("WEIGHTS")
-            #print(weights)
-            #print("INDEXES")
-            #print(indexes)
-            #print("TD_TARGET")
-            #print(td_target)
             # Update the critic given the targets with weights
-            _, predicted_q, td_error, ve_weighted_loss, ve_loss = self._value_estimator.update_with_weights_and_n1s_td(
+            _, predicted_q, td_error, ve_weighted_loss, ve_loss = self._value_estimator.update_with_weights(
                 current_state_batch, action_batch, np.reshape(td_target, (-1, 1)),
-                weights.reshape(-1, 1), ns_current_state_batch.shape[0])
+                weights.reshape(-1, 1))
 
             # NB: Use td_target instead of predicted_target_q or predicted_q because it's not pure estimate (reward as samples)
             if self._normalize_returns:
