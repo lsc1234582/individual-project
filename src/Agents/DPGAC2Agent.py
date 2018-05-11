@@ -856,17 +856,17 @@ class DPGAC2WithPrioritizedRB(AgentBase):
 
             #TODO: Use action from the last transition instead? Since it's already available. Investigate
             ns_predicted_last_target_q = self._value_estimator.predict_target(
-                    next_state_batch[-2, :].reshape(1, -1), self._policy_estimator.predict_target(next_state_batch[-2, :].reshape(1, -1)))
+                    ns_next_state_batch[-2, :].reshape(1, -1), self._policy_estimator.predict_target(ns_next_state_batch[-2, :].reshape(1, -1)))
 
             # Note that start bootstrapping from the second-to-last transition, ie use estimate on the last 'current
             # state' and use pure reward for the last transition
             ns_td_target = []
             last_td_target = ns_predicted_last_target_q
             for k in range(ns_current_state_batch.shape[0] - 1, -1, -1):
-                if termination_batch[k]:
-                    ns_td_target.append(reward_batch[k])
+                if ns_termination_batch[k]:
+                    ns_td_target.append(ns_reward_batch[k])
                 else:
-                    last_td_target = reward_batch[k] + self._discount_factor * last_td_target
+                    last_td_target = ns_reward_batch[k] + self._discount_factor * last_td_target
                     ns_td_target.append(last_td_target)
 
             # Combine 1-step batches with n-step batches
