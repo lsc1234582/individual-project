@@ -865,10 +865,10 @@ class DPGAC2WithPrioritizedRB(AgentBase):
                 last_td_target = ns_predicted_last_target_q
                 for k in range(ns_current_state_batch.shape[0] - 1, -1, -1):
                     if ns_termination_batch[k]:
-                        ns_td_target.append(ns_reward_batch[k])
+                        ns_td_target.insert(0, ns_reward_batch[k])
                     else:
                         last_td_target = ns_reward_batch[k] + self._discount_factor * last_td_target
-                        ns_td_target.append(last_td_target)
+                        ns_td_target.insert(0, last_td_target)
             elif ns_next_state_batch.shape[0] == 1:
                 ns_td_target.append(ns_reward_batch[0])
             else:
@@ -880,6 +880,12 @@ class DPGAC2WithPrioritizedRB(AgentBase):
             td_target = td_target + ns_td_target
             weights = np.concatenate([weights, ns_weights], axis=0)
             indexes = indexes + ns_indexes
+            #print("WEIGHTS")
+            #print(weights)
+            #print("INDEXES")
+            #print(indexes)
+            #print("TD_TARGET")
+            #print(td_target)
             # Update the critic given the targets with weights
             _, predicted_q, td_error, ve_weighted_loss, ve_loss = self._value_estimator.update_with_weights_and_n1s_td(
                 current_state_batch, action_batch, np.reshape(td_target, (-1, 1)),
