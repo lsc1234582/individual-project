@@ -105,6 +105,28 @@ class PrioritizedReplayBufferTest(unittest.TestCase):
         self.assertTrue(np.all(r0==data_col1) or np.all(s0==data_col3))
         self.assertTrue(np.all(s1==data_col1) or np.all(s0==data_col3))
 
+    def testBatchSizeBiggerThanActualSize(self):
+        rb_max_size = 40
+        alpha = 0.3
+        minibatch_size = 5
+        num_priorities = 10
+        # Number of repetitions for each priority
+        num_rep = 4
+        num_samples = 5
+
+        rb = PrioritizedReplayBuffer(rb_max_size, alpha)
+
+        priorities = [0 for _ in range(num_priorities)]
+        for i in range(1, num_priorities+1):
+            priority = i
+            priorities[i-1] = priority
+            for _ in range(num_rep):
+                rb.add(i, i, i, i, i)
+
+        os, acs, rs, nos, ds, ws, idx = rb.sample_batch(minibatch_size, 1.0)
+        print("RB SAMPLE")
+        print(os)
+
 
 if __name__ == '__main__':
     unittest.main()
