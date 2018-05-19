@@ -622,18 +622,22 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
 class SummaryWriter(object):
 
-    def __init__(self, sess, summary_dir, var_names):
+    def __init__(self, sess, summary_dir):
         self._sess = sess
-        self._summary_vars = {}
+        self._summary_vars = None
         self._writer = tf.summary.FileWriter(summary_dir, sess.graph)
-        with tf.name_scope("summary"):
-            for var_name in var_names:
-                self._summary_vars[var_name] = tf.Variable(0., trainable=False, name=var_name)
-                tf.summary.scalar(var_name, self._summary_vars[var_name])
 
-        self._summary_ops = tf.summary.merge_all()
 
     def writeSummary(self, var_values, training_step):
+        if self._summary_vars is None:
+            self._summary_vars = {}
+            with tf.variable_scope("Stats_Summary"):
+                for var_name in var_values:
+                    self._summary_vars[var_name] = tf.get_variable(shape=(), trainable=False, name=var_name)
+                    tf.summary.scalar(var_name, self._summary_vars[var_name])
+                self._summary_ops = tf.summary.merge_all()
+        else:
+            assert(self._summary_vars.keys() == var_values.keys())
         feed_dict = {self._summary_vars[var_name]: var_values[var_name] for var_name in var_values.keys()}
         summary_str = self._sess.run(self._summary_ops, feed_dict=feed_dict)
         self._writer.add_summary(summary_str, training_step)

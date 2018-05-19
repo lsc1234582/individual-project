@@ -152,14 +152,14 @@ class DPGMultiPerceptronValueEstimator(object):
         return inputs, action, out
 
     def update(self, inputs, action, predicted_q_value):
-        return self._sess.run([self._denorm_out, self._optimize, self._loss], feed_dict={
+        return self._sess.run([self._optimize, self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,
             self._td_target: predicted_q_value
         })
 
     def update_with_weights(self, inputs, action, td_target, weights):
-        return self._sess.run([self._weighted_optimize, self._denorm_out, self._td_error, self._weighted_loss, self._loss], feed_dict={
+        return self._sess.run([self._weighted_optimize, self._td_error, self._weighted_loss, self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,
             self._td_target: td_target,
@@ -176,7 +176,7 @@ class DPGMultiPerceptronValueEstimator(object):
         weights: ...
         nb_ns_td_target: Number of N-step td targets in the batch
         """
-        return self._sess.run([self._weighted_n1s_optimize, self._denorm_out, self._td_error, self._weighted_n1s_loss,\
+        return self._sess.run([self._weighted_n1s_optimize, self._td_error, self._weighted_n1s_loss,\
             self._n1s_loss], feed_dict={
             self._inputs: inputs,
             self._action: action,

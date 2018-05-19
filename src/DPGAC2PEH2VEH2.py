@@ -85,12 +85,7 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
             return_rms=return_rms
             )
 
-    summary_writer = SummaryWriter(session, args.summary_dir,[
-        "TotalReward",
-        "AverageMaxQ",
-        "BestAverage",
-        #"ValueEstimatorTrainLoss"
-        ])
+    summary_writer = SummaryWriter(session, args.summary_dir)
 
     estimator_saver_recent = tf.train.Saver(max_to_keep=args.max_estimators_to_keep)
     estimator_saver_best = tf.train.Saver(max_to_keep=1)
@@ -121,6 +116,7 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
                 normalize_returns=normalize_returns,
                 return_rms=return_rms,
                 num_updates=args.num_updates,
+                log_stats_freq=args.log_stats_freq,
                 )
 
 def getArgParser():
