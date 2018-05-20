@@ -125,7 +125,7 @@ class AgentBase(object):
         combined_stats['epoch/actions_mean'] = np.mean(self._stats_epoch_actions)
         combined_stats['epoch/actions_std'] = np.std(self._stats_epoch_actions)
         combined_stats['epoch/Q_mean'] = np.mean(self._stats_epoch_Q)
-        combined_stats['epoch/Q_std'] = np.mean(self._stats_epoch_Q)
+        combined_stats['epoch/Q_std'] = np.std(self._stats_epoch_Q)
         #combined_stats['epoch/actor_loss'] = np.mean(self._stats_epoch_actor_loss)
         combined_stats['epoch/critic_loss'] = np.mean(self._stats_epoch_critic_loss)
         # Clear epoch statistics.
