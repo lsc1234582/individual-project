@@ -14,7 +14,7 @@ class DPGMultiPerceptronValueEstimator(object):
     """
 
     def __init__(self, sess, state_rms, return_rms, state_dim, action_dim, h_layer_shapes, state_range, return_range,
-            learning_rate, tau, num_actor_vars, lambda2=0.5,
+            learning_rate, tau, num_actor_vars, lambda2=0.1,
             scope="value_estimator"):
         self._sess = sess
         self._state_dim = state_dim
@@ -25,6 +25,8 @@ class DPGMultiPerceptronValueEstimator(object):
         self._learning_rate = learning_rate
         self._tau = tau
         # Weights of the n-step term in the loss function
+        # TODO: remove hardcoded.
+        # NB: lambda2 = 1/num_steps for n-step td calculation
         self._lambda2 = lambda2
 
         self._state_rms = state_rms
@@ -83,10 +85,11 @@ class DPGMultiPerceptronValueEstimator(object):
             # Weighted n-1 step update
             # The loss function is defined in the paper [Leverage...]
             self._nb_ns_td_target = tf.placeholder(tf.int32, [], name="nb_ns_td_target")
-            self._n1s_loss = tf.reduce_mean(td_error_sq[:-self._nb_ns_td_target])\
-                    + self._lambda2 * tf.reduce_mean(td_error_sq[-self._nb_ns_td_target:])
-            self._weighted_n1s_loss = tf.reduce_mean(weighted_td_error_sq[:-self._nb_ns_td_target])\
-                    + self._lambda2 * tf.reduce_mean(weighted_td_error_sq[-self._nb_ns_td_target:])
+            mid_indx = tf.shape(td_error_sq)[0] - self._nb_ns_td_target
+            self._n1s_loss = tf.reduce_mean(td_error_sq[:mid_indx])\
+                    + self._lambda2 * tf.reduce_mean(td_error_sq[mid_indx:])
+            self._weighted_n1s_loss = tf.reduce_mean(weighted_td_error_sq[:mid_indx])\
+                    + self._lambda2 * tf.reduce_mean(weighted_td_error_sq[mid_indx:])
             self._weighted_n1s_optimize = opt.minimize(self._weighted_n1s_loss, var_list=self._network_params, name="weighted_n1s_optimize")
 
             # Get the gradient of the net w.r.t. the action.
