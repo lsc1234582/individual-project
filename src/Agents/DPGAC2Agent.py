@@ -248,6 +248,7 @@ class AgentBase(object):
         self._last_action = best_action
 
         if termination:
+            episode_num_this_run = episode_num - episode_start_num + 1
             # Record cumulative reward of trial
             self._episode_returns.append(self._episode_return)
             self._stats_epoch_episode_returns.append(self._episode_return)
@@ -270,7 +271,7 @@ class AgentBase(object):
                          "R {4:>9.3f}, Ave R {5:>9.3f} {6}"
 
             logger.info(log_string.format(episode_num, self._num_episodes + episode_start_num - 1,
-                episode_num - episode_start_num + 1,
+                episode_num_this_run,
                 self._num_episodes,
                 self._episode_return[0], average, improve_str))
 
@@ -283,15 +284,13 @@ class AgentBase(object):
                 if improve_str == '*':
                     logger.info("Saving best agent so far")
                     self.save(self._estimator_save_dir, is_best=True, step=episode_num, write_meta_graph=False)
-                if (episode_num % self._recent_save_freq == 0 or episode_num >= self._num_episodes +\
-                    episode_start_num - 1):
+                if (episode_num_this_run % self._recent_save_freq == 0 or episode_num_this_run >= self._num_episodes):
                     logger.info("Saving agent checkpoints")
                     self.save(self._estimator_save_dir, step=episode_num, write_meta_graph=False)
 
             # Save replay buffer
             if (not self._replay_buffer_save_dir is None) and \
-                (episode_num % self._replay_buffer_save_freq == 0 or episode_num >= self._num_episodes +\
-                episode_start_num - 1):
+                (episode_num_this_run % self._replay_buffer_save_freq == 0 or episode_num_this_run >= self._num_episodes):
                 logger.info("Saving replay buffer")
                 self.saveReplayBuffer(self._replay_buffer_save_dir)
 
