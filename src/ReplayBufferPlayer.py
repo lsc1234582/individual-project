@@ -29,8 +29,8 @@ if __name__ == "__main__":
     with EnvironmentContext(args.env_name) as env:
         done = False
         env.reset()
-        for step, exp in enumerate(replay_buffer.iter()):
-            _, action, _, done, _ = exp
+        for step, exp in enumerate(replay_buffer._storage):
+            _, action, _, _, done = exp
             env.step(np.reshape(action, (1, -1)))
             if done:
                 env.reset()
