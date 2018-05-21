@@ -29,7 +29,7 @@ class VREPPushTaskEnvironment(object):
     # Simulation delta time in seconds
     SIMULATION_DT = 0.05
 
-    def __init__(self, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
+    def __init__(self, port=19991, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
                 mico_model_path="models/robots/non-mobile/MicoRobot.ttm"):
         logger.info("Creating VREPPushTaskEnvironment")
         self._init_joint_pos = init_joint_pos if not init_joint_pos is None else VREPPushTaskEnvironment.DEFAULT_JOINT_POSITIONS
@@ -41,7 +41,7 @@ class VREPPushTaskEnvironment(object):
         self.observation_space = Box((24,), (-999.0,), (999.0,))
 
         vrep.simxFinish(-1) # just in case, close all opened connections
-        self.client_ID=vrep.simxStart('127.0.0.1',19997,True,True,5000,5) # Connect to V-REP
+        self.client_ID=vrep.simxStart('127.0.0.1',port,True,True,5000,5) # Connect to V-REP
         if self.client_ID == -1:
             raise IOError("VREP connection failed.")
 
@@ -239,8 +239,8 @@ class VREPPushTaskEnvironment(object):
 
 class VREPPushTaskMultiStepRewardEnvironment(VREPPushTaskEnvironment):
 
-    def __init__(self, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None):
-        super().__init__(init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos)
+    def __init__(self, port=19991, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None):
+        super().__init__(port, init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos)
 
     def getRewards(state, action):
         gripper_cube_dist = np.sqrt(np.sum(np.square(state[-6:-3])))
@@ -256,9 +256,9 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
     # Reset time in seconds
     RESET_TIME = 1.2
 
-    def __init__(self, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
+    def __init__(self, port=19991, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
                 mico_model_path="models/robots/non-mobile/MicoRobot.ttm"):
-        super().__init__(init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos, mico_model_path)
+        super().__init__(port, init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos, mico_model_path)
         self.action_space = Box((7,), (-1.0,), (1.0,))
         self.observation_space = Box((28,), (-999.0,), (999.0,))
         self._gripper_closing = True
@@ -391,42 +391,60 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
         return next_states, rewards, False, None
 
 
-def make(env_name):
+def make(env_name, *args, **kwargs):
     if env_name == "VREPPushTask":
-        return VREPPushTaskEnvironment()
+        return VREPPushTaskEnvironment(*args, **kwargs)
     elif env_name == "VREPPushTask2":
         return VREPPushTaskEnvironment(
+                *args,
+                **kwargs,
                 init_cb_pos=[0.3, -0.5, 0.05],
                 init_tg_pos=[0.3, -0.8, 0.002],
                 )
     elif env_name == "VREPPushTask3":
         return VREPPushTaskEnvironment(
+                *args,
+                **kwargs,
                 init_cb_pos=[0.55, 0., 0.05],
                 init_tg_pos=[0.8, 0., 0.002],
                 )
     elif env_name == "VREPPushTask4":
         return VREPPushTaskEnvironment(
+                *args,
+                **kwargs,
                 init_cb_pos=[-0.55, 0., 0.05],
                 init_tg_pos=[-0.8, 0., 0.002],
                 )
     if env_name == "VREPPushTaskNonIK":
-        return VREPPushTaskNonIKEnvironment(mico_model_path="models/robots/non-mobile/MicoRobotNonIK.ttm")
+        return VREPPushTaskNonIKEnvironment(
+                *args,
+                **kwargs,
+                mico_model_path="models/robots/non-mobile/MicoRobotNonIK.ttm")
     elif env_name == "VREPPushTaskContact":
         return VREPPushTaskEnvironment(
+                *args,
+                **kwargs,
                 init_joint_pos=[np.pi, 5.0, np.pi, np.pi, np.pi, 3.40],
                 init_cb_pos=[0.35, 0.35, 0.05],
                 )
     elif env_name == "VREPPushTaskContact2":
         return VREPPushTaskEnvironment(
+                *args,
+                **kwargs,
                 init_joint_pos=[np.pi, 5.0, np.pi, np.pi+0.1, np.pi, 3.40],
                 init_cb_pos=[0.33, 0.35, 0.05],
                 init_cb_orient=[0., 0., 0.5],
                 init_tg_pos=[0.1, 0.7, 0.002],
                 )
     elif env_name == "VREPPushTaskMultiStepReward":
-        return VREPPushTaskMultiStepRewardEnvironment()
+        return VREPPushTaskMultiStepRewardEnvironment(
+                *args,
+                **kwargs,
+                )
     elif env_name == "VREPPushTaskMultiStepRewardContact2":
         return VREPPushTaskMultiStepRewardEnvironment(
+                *args,
+                **kwargs,
                 init_joint_pos=[np.pi, 5.0, np.pi, np.pi+0.1, np.pi, 3.40],
                 init_cb_pos=[0.33, 0.35, 0.05],
                 init_cb_orient=[0., 0., 0.5],

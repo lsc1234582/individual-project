@@ -20,15 +20,17 @@ ENVS = {
         "VREPPushTaskNonIK": VREPEnvironments.make,
         }
 
-def MakeEnvironment(env_name):
-    return (ENVS[env_name])(env_name)
+def MakeEnvironment(env_name, *args, **kwargs):
+    return (ENVS[env_name])(env_name, *args, **kwargs)
 
 class EnvironmentContext(object):
-    def __init__(self, env_name):
+    def __init__(self, env_name, *args, **kwargs):
         self._env_name = env_name
+        self._args = args
+        self._kwargs = kwargs
 
     def __enter__(self):
-        self._env = MakeEnvironment(self._env_name)
+        self._env = MakeEnvironment(self._env_name, *self._args, **self._kwargs)
         return self._env
 
     def __exit__(self, exception_type, exception_value, traceback):

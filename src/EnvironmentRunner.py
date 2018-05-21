@@ -24,7 +24,7 @@ def runEnvironmentWithAgent(args):
     random.seed(args.random_seed)
     np.random.seed(args.random_seed)
     logger.info("Making environment {}".format(args.env_name))
-    with EnvironmentContext(args.env_name) as env, tf.Session(config=config) as session:
+    with EnvironmentContext(args.env_name, port=args.env_vrep_port) as env, tf.Session(config=config) as session:
         # To record progress across different training sessions
         global_episode_num = tf.Variable(0, name="global_episode_num", trainable=False)
         logger.info("Making agent {}".format(args.agent_name))
@@ -81,6 +81,7 @@ def getArgParser():
 
     # Session parameters
     parser.add_argument("--env-name", help="choose the env[VREPPushTask, Pendulum-v0]", required=True)
+    parser.add_argument("--env-vrep-port", help="Port number to run vrep remote server", type=int, default=19997)
     parser.add_argument("--estimator-dir", help="directory for loading/storing estimators", required=True)
     parser.add_argument("--summary-dir", help="directory for storing tensorboard info", required=True)
     #parser.add_argument("--agent-name", help="name of the agent")
