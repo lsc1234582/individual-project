@@ -997,7 +997,7 @@ class DPGAC2WithPrioritizedRB(AgentBase):
             #print(len(indexes))
             # Update the critic given the targets with weights
             _, td_error, ve_weighted_loss, ve_loss = self._value_estimator.update_with_weights_and_n1s_td(
-                current_state_batch, action_batch, td_target, weights, rollout_length)
+                current_state_batch, action_batch, td_target, weights, nb_ns_td_target)
             self._stats_epoch_critic_loss.append(ve_weighted_loss)
 
             # NB: Use td_target because it's not pure estimate (reward as samples)
