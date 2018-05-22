@@ -187,6 +187,11 @@ class AgentBase(object):
     def reset(self):
         self._actor_noise.reset()
 
+    def _normalizationUpdateAfterRB(self, *args, **kwargs):
+        if self._normalize_states:
+            self._state_rms.update(np.array([self._last_state]))
+
+
     def act(self, observation, last_reward, termination, episode_start_num, episode_num, episode_num_var, is_learning=False):
         current_state = observation.reshape(1, -1)
 
@@ -211,9 +216,8 @@ class AgentBase(object):
         # Store the last step
         self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(), last_reward,
                 current_state.squeeze().copy(), termination)
+        self._normalizationUpdateAfterRB(current_state=current_state)
 
-        if self._normalize_states:
-            self._state_rms.update(np.array([self._last_state]))
 
         if not termination:
             self._last_state = current_state.copy()

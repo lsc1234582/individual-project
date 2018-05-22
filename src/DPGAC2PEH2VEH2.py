@@ -135,7 +135,6 @@ def getArgParser():
     parser.add_argument("--minibatch-size-log", help="size of minibatch for minibatch-SGD as exponent of 2",
             type=int, default=7)
     parser.add_argument("--replay-buffer-size-log", help="max size of the replay buffer as exponent of 10", type=int, default=6)
-    parser.add_argument("--num-updates", help="number of estimator updates per training step", type=int, default=1)
 
     return parser
 

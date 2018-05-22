@@ -102,6 +102,7 @@ def getArgParser():
             default=500)
     parser.add_argument("--log-stats-freq", help="Stats log frequency (per number of episodes)", type=int,
             default=1)
+    parser.add_argument("--num-updates", help="number of estimator updates per training step", type=int, default=1)
     parser.add_argument("--train-freq", help="Training frequency (per number of rollout steps)", type=int,
             default=1)
 

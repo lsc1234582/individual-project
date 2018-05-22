@@ -58,11 +58,11 @@ def getModuleLogger(module_name):
     logger.addHandler(ch)
     return logger
 
-def generateRandomAction(max_vel):
+def generateRandomAction(max_vel, dim=6):
     """
-        Generate an array of shape (6,) of range [-max_vel, max_vel].
+        Generate an array of shape (dim,) of range [-max_vel, max_vel].
     """
-    return np.array([random.random() * max_vel * 2 - max_vel for _ in range(6)])
+    return np.array([random.random() * max_vel * 2 - max_vel for _ in range(dim)])
 
 class SortedDisplayDict(dict):
    def __str__(self):
