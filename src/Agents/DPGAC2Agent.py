@@ -12,14 +12,12 @@ from Utils import generateRandomAction
 logger = getModuleLogger(__name__)
 
 class AgentBase(object):
-    def __init__(self, sess, policy_estimator, value_estimator, replay_buffer,
+    def __init__(self, sess, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
             log_stats_freq=1, train_freq=1):
         self._sess = sess
-        self._policy_estimator = policy_estimator
-        self._value_estimator = value_estimator
         self._discount_factor = discount_factor
         self._num_episodes = num_episodes
         self._max_episode_length = max_episode_length
@@ -54,8 +52,6 @@ class AgentBase(object):
         self._stats_epoch_episode_returns = []
         self._stats_epoch_episode_steps = []
         self._stats_epoch_actions = []
-        self._stats_epoch_Q = []
-        self._stats_epoch_critic_loss = []
         self._stats_tot_steps = 0
         self._log_stats_freq = log_stats_freq
 
@@ -81,7 +77,10 @@ class AgentBase(object):
     def _sampleBatch(self, batch_size, **kwargs):
         return self._replay_buffer.sample_batch(batch_size=batch_size)
 
-    def getStats(self):
+    def _getStats(self):
+        # Auxiliary data to pass to child class
+        aux = {}
+        # Agent stats
         if self._stats_sample is None:
             # Get a sample and keep that fixed for all further computations.
             # This allows us to estimate the change in value for the same set of inputs.
@@ -100,58 +99,45 @@ class AgentBase(object):
         values = self._sess.run(ops)
         assert len(names) == len(values)
         stats = dict(zip(names, values))
-        stats_sample_q = self._value_estimator.predict(self._stats_sample[0], self._stats_sample[1])
-        stats["agent_sample_Q_mean"] = np.mean(stats_sample_q)
-        stats["agent_sample_Q_std"] = np.std(stats_sample_q)
-        stats_sample_action = self._policy_estimator.predict(self._stats_sample[0])
+        stats_sample_action = self._getBestAction()
+        aux["stats_sample_action"] = stats_sample_action
         stats["agent_sample_action_mean"] = np.mean(stats_sample_action)
         stats["agent_sample_action_std"] = np.std(stats_sample_action)
-        stats_sample_action_q = self._value_estimator.predict(self._stats_sample[0], stats_sample_action)
-        stats["agent_sample_action_Q_mean"] = np.mean(stats_sample_action_q)
-        stats["agent_sample_action_Q_std"] = np.std(stats_sample_action_q)
 
-        return stats
+        # Epoch stats
+        stats_tot_duration = time.time() - self._stats_start_time
+        stats['epoch/episode_return'] = np.mean(self._stats_epoch_episode_returns)
+        stats['epoch/episode_steps'] = np.mean(self._stats_epoch_episode_steps)
+        # TODO: Again, full action vector instead of reduced value?
+        stats['epoch/actions_mean'] = np.mean(self._stats_epoch_actions)
+        stats['epoch/actions_std'] = np.std(self._stats_epoch_actions)
+        # Clear epoch statistics.
+        self._stats_epoch_episode_returns = []
+        self._stats_epoch_episode_steps = []
+        self._stats_epoch_actions = []
+
+        # Evaluation statistics.
+        #if eval_env is not None:
+        #    stats['epoch/eval/episode_return'] = np.mean(self._epoch_eval_episode_return)
+        #    stats['epoch/eval/Q_mean'] = np.mean(self._epoch_eval_Q_mean)
+        #    stats['epoch/eval/Q_std'] = np.std(self._epoch_eval_Q_mean)
+
+        # Total statistics.
+        stats["total/score"] = self.score()
+        stats['total/duration'] = stats_tot_duration
+        stats['total/steps_per_second'] = float(self._stats_tot_steps) / float(stats_tot_duration)
+        stats['total/steps'] = self._stats_tot_steps
+
+        return stats, aux
 
     def _logStats(self, episode_num):
         """
         Logging happens at the end of every logging epoch, which is determined by the logging frequency, in number of
         episodes
         """
-        stats_tot_duration = time.time() - self._stats_start_time
-        stats = self.getStats()
-        combined_stats = stats.copy()
-        # Epoch statistics.
-        combined_stats['epoch/episode_return'] = np.mean(self._stats_epoch_episode_returns)
-        combined_stats['epoch/episode_steps'] = np.mean(self._stats_epoch_episode_steps)
-        # TODO: Again, full action vector instead of reduced value?
-        combined_stats['epoch/actions_mean'] = np.mean(self._stats_epoch_actions)
-        combined_stats['epoch/actions_std'] = np.std(self._stats_epoch_actions)
-        combined_stats['epoch/Q_mean'] = np.mean(self._stats_epoch_Q)
-        combined_stats['epoch/Q_std'] = np.std(self._stats_epoch_Q)
-        #combined_stats['epoch/actor_loss'] = np.mean(self._stats_epoch_actor_loss)
-        combined_stats['epoch/critic_loss'] = np.mean(self._stats_epoch_critic_loss)
-        # Clear epoch statistics.
-        self._stats_epoch_episode_returns = []
-        self._stats_epoch_episode_steps = []
-        self._stats_epoch_actions = []
-        self._stats_epoch_Q = []
-        self._stats_epoch_critic_loss = []
-
-        # Evaluation statistics.
-        #if eval_env is not None:
-        #    combined_stats['epoch/eval/episode_return'] = np.mean(self._epoch_eval_episode_return)
-        #    combined_stats['epoch/eval/Q_mean'] = np.mean(self._epoch_eval_Q_mean)
-        #    combined_stats['epoch/eval/Q_std'] = np.std(self._epoch_eval_Q_mean)
-
-        # Total statistics.
-        combined_stats["total/score"] = self.score()
-        combined_stats['total/duration'] = stats_tot_duration
-        combined_stats['total/steps_per_second'] = float(self._stats_tot_steps) / float(stats_tot_duration)
-        combined_stats['total/steps'] = self._stats_tot_steps
-
-
-        #pprint.pprint(combined_stats)
-        self._summary_writer.writeSummary(combined_stats, episode_num)
+        stats, _ = self._getStats()
+        #pprint.pprint(stats)
+        self._summary_writer.writeSummary(stats, episode_num)
 
 
     def initialize(self):
@@ -160,8 +146,7 @@ class AgentBase(object):
         """
         logger.info("Initializing agent {}".format(self.__class__.__name__))
         self._sess.run(tf.global_variables_initializer())
-        self._policy_estimator.update_target_network(tau=1.0)
-        self._value_estimator.update_target_network(tau=1.0)
+        self._initialize()
 
 
     def save(self, estimator_save_dir, is_best=False, step=None, write_meta_graph=False):
@@ -208,11 +193,7 @@ class AgentBase(object):
         # Initialize the last state and action
         if self._last_state is None:
             self._last_state = current_state
-            best_action = self._policy_estimator.predict(self._last_state)
-            # For stats purpose
-            best_action_q = self._value_estimator.predict(self._last_state, best_action)
-            self._stats_epoch_actions.append(best_action)
-            self._stats_epoch_Q.append(best_action_q)
+            best_action = self._getBestAction()
             # Add exploration noise when training
             if is_learning:
                 best_action += self._actor_noise()
@@ -236,11 +217,7 @@ class AgentBase(object):
 
         if not termination:
             self._last_state = current_state.copy()
-            best_action = self._policy_estimator.predict(self._last_state)
-            # For stats purpose
-            best_action_q = self._value_estimator.predict(self._last_state, best_action)
-            self._stats_epoch_actions.append(best_action)
-            self._stats_epoch_Q.append(best_action_q)
+            best_action = self._getBestAction()
             # Add exploration noise when training
             if is_learning:
                 best_action += self._actor_noise()
@@ -325,12 +302,52 @@ class DPGAC2Agent(AgentBase):
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1):
-         super().__init__(sess, policy_estimator, value_estimator, replay_buffer,
+            log_stats_freq=1, train_freq=1):
+        super().__init__(sess, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
-            log_stats_freq)
+            log_stats_freq, train_freq)
+
+        self._policy_estimator = policy_estimator
+        self._value_estimator = value_estimator
+        self._stats_epoch_Q = []
+        self._stats_epoch_critic_loss = []
+
+    def _initialize(self):
+        self._policy_estimator.update_target_network(tau=1.0)
+        self._value_estimator.update_target_network(tau=1.0)
+
+
+    def _getStats(self):
+        stats, aux = super()._getStats()
+
+        # Agent stats
+        stats_sample_q = self._value_estimator.predict(self._stats_sample[0], self._stats_sample[1])
+        stats["agent_sample_Q_mean"] = np.mean(stats_sample_q)
+        stats["agent_sample_Q_std"] = np.std(stats_sample_q)
+        stats_sample_action_q = self._value_estimator.predict(self._stats_sample[0], aux["stats_sample_action"])
+        stats["agent_sample_action_Q_mean"] = np.mean(stats_sample_action_q)
+        stats["agent_sample_action_Q_std"] = np.std(stats_sample_action_q)
+
+        # Epoch stats
+        stats['epoch/Q_mean'] = np.mean(self._stats_epoch_Q)
+        stats['epoch/Q_std'] = np.std(self._stats_epoch_Q)
+        #stats['epoch/actor_loss'] = np.mean(self._stats_epoch_actor_loss)
+        stats['epoch/critic_loss'] = np.mean(self._stats_epoch_critic_loss)
+        # Clear epoch statistics.
+        self._stats_epoch_Q = []
+        self._stats_epoch_critic_loss = []
+
+        return stats, aux
+
+    def _getBestAction(self):
+        best_action = self._policy_estimator.predict(self._last_state)
+        # For stats purpose
+        best_action_q = self._value_estimator.predict(self._last_state, best_action)
+        self._stats_epoch_actions.append(best_action)
+        self._stats_epoch_Q.append(best_action_q)
+        return best_action
 
     def _train(self):
         for _ in range(self._num_updates):
@@ -373,9 +390,9 @@ class DPGAC2Agent(AgentBase):
             # Some basic summary of training loss
             #if self._step % 100 == 0:
             #    self._summary_writer.writeSummary({"ValueEstimatorTrainLoss": ve_loss}, self._step)
-        # Update target networks
-        self._policy_estimator.update_target_network()
-        self._value_estimator.update_target_network()
+            # Update target networks
+            self._policy_estimator.update_target_network()
+            self._value_estimator.update_target_network()
 
 
 class DPGAC2WithDemoAgent(AgentBase):
@@ -908,7 +925,7 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
 
 
 
-class DPGAC2WithPrioritizedRB(AgentBase):
+class DPGAC2WithPrioritizedRB(DPGAC2Agent):
     def __init__(self, sess, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
@@ -1037,7 +1054,6 @@ class DPGAC2WithPrioritizedRB(AgentBase):
                 logger.error("Training: value estimator loss is nan, stop training")
                 self._stop_training = True
 
-        # Update target networks
-        self._policy_estimator.update_target_network()
-        self._value_estimator.update_target_network()
-
+            # Update target networks
+            self._policy_estimator.update_target_network()
+            self._value_estimator.update_target_network()
