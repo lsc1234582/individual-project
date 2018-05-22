@@ -1139,6 +1139,12 @@ class ModelBasedAgent(AgentBase):
         self._stats_epoch_actions.append(best_action)
         return best_action
 
+    def _normalizationUpdateAfterRB(self, *args, **kwargs):
+        if self._normalize_states:
+            self._state_rms.update(np.array([self._last_state]))
+            state_change = kwargs["current_state"] - self._last_state
+            self._state_change_rms.update(np.array([state_change]))
+
     def _train(self):
         print("training model!!")
         print(self._num_updates)
