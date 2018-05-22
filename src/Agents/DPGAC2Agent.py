@@ -1135,8 +1135,8 @@ class ModelBasedAgent(AgentBase):
             self._state_change_rms.update(np.array([state_change]))
 
     def _train(self):
-        print("training model!!")
-        print(self._num_updates)
+        #print("training model!!")
+        #print(self._num_updates)
         for _ in range(self._num_updates):
             current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch =\
                     self._sampleBatch(self._minibatch_size)
