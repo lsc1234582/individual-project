@@ -1061,3 +1061,87 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             # Update target networks
             self._policy_estimator.update_target_network()
             self._value_estimator.update_target_network()
+
+class ModelBasedAgent(AgentBase):
+    def __init__(self, sess, model_estimator, replay_buffer,
+            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
+            estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
+            replay_buffer_save_freq, normalize_states, state_rms, state_change_rms, normalize_returns, return_rms, num_updates=1,
+            log_stats_freq=1, train_freq=1):
+        super().__init__(sess, replay_buffer,
+            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
+            estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
+            replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
+            log_stats_freq, train_freq)
+
+        self._model_estimator = model_estimator
+        self._stats_epoch_Q = []
+        self._stats_epoch_model_loss = []
+        #TODO: remove hard coded
+        # Number of random actions to take
+        self._num_random_action = 100
+        # Planning horizon for model-based learning
+        self._model_plan_horizon = 5
+        self._state_change_rms = state_change_rms
+
+    def _initialize(self):
+        pass
+
+    def _getStats(self):
+        stats, aux = super()._getStats()
+        # Agent stats
+        if self._normalize_states:
+            ops = [tf.reduce_mean(self._state_change_rms.mean), tf.reduce_mean(self._state_change_rms.std)]
+            values = self._sess.run(ops)
+            stats["state_change_rms_mean"] = values[0]
+            stats["state_change_rms_std"] = values[1]
+        # Epoch stats
+        stats['epoch/model_loss'] = np.mean(self._stats_epoch_model_loss)
+        # Clear epoch statistics.
+        self._stats_epoch_model_loss = []
+
+        return stats, aux
+
+    def _getBestAction(self):
+        """
+        Assume reward function is given
+        """
+        # TODO: Remove explicit reward from explicit environment
+        from Environments.VREPEnvironments import VREPPushTaskEnvironment
+        best_action = None
+        max_horizon_reward = -float("inf")
+        current_state = np.copy(self._last_state)
+        for i in range(self._num_random_action):
+            horizon_reward = 0
+            first_action = None
+            for j in range(self._model_plan_horizon):
+                # TODO: Remove hard coded max velocity
+                action = generateRandomAction(1.0, 7).reshape(1, -1)
+                if j == 0:
+                    first_action = action
+                next_state = current_state + self._model_estimator.predict(current_state, action)
+                horizon_reward += VREPPushTaskEnvironment.getRewards(current_state, action)
+                current_state = next_state
+            if best_action is None or horizon_reward > max_horizon_reward:
+                best_action = first_action
+                max_horizon_reward = horizon_reward
+        self._stats_epoch_actions.append(best_action)
+        return best_action
+
+    def _train(self):
+        print("training model!!")
+        print(self._num_updates)
+        for _ in range(self._num_updates):
+            current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch =\
+                    self._sampleBatch(self._minibatch_size)
+            current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)
+            action_batch = action_batch.reshape(self._minibatch_size, -1)
+            reward_batch = reward_batch.reshape(self._minibatch_size, -1)
+            next_state_batch = next_state_batch.reshape(self._minibatch_size, -1)
+
+            _, _, model_loss = self._model_estimator.update(current_state_batch, action_batch, next_state_batch - current_state_batch)
+            self._stats_epoch_model_loss.append(model_loss)
+            # Early stop
+            if np.isnan(model_loss):
+                logger.error("Training: model estimator loss is nan, stop training")
+                self._stop_training = True

@@ -1,8 +1,9 @@
 import tensorflow as tf
 import tflearn
+from Utils import normalize, denormalize
 
 class MultiPerceptronModelEstimator(object):
-    """ Deterministic Value Gradient Model Approximator
+    """ Multi-Perceptron Model
 
     The estimator in use deploys a multi-layer perceptron
 
@@ -10,21 +11,29 @@ class MultiPerceptronModelEstimator(object):
     Inputs and outputs are normalised to have 0 mean and std of 1
     """
 
-    def __init__(self, sess, state_processor, state_dim, action_dim, h_layer_shapes, learning_rate,
-    scope="model_estimator"):
+    def __init__(self, sess, state_rms, state_change_rms, state_dim, action_dim, h_layer_shapes, learning_rate,
+            state_range, scope="model_estimator"):
         self._sess = sess
-        self._state_processor = state_processor
+        self._state_rms = state_rms
+        self._state_change_rms = state_change_rms
         self._state_dim = state_dim
         self._action_dim = action_dim
         self._h_layer_shapes = h_layer_shapes
         self._learning_rate = learning_rate
+        self._state_range = state_range
 
         # Create the model network
         self._inputs, self._action, self._outputs = self._create_model_network(scope)
 
+        # Denormalized outputs
+        self._denorm_outputs = denormalize(tf.clip_by_value(self._outputs, self._state_range[0], self._state_range[1]
+            ), self._state_change_rms)
+
         with tf.name_scope(scope):
             # Network target (y_i)
             self._actual_outputs = tf.placeholder(tf.float32, [None, self._state_dim], name="actual_outputs")
+            normalized_actual_outputs = tf.clip_by_value(normalize(self._actual_outputs, self._state_change_rms),
+                    self._state_range[0], self._state_range[1])
             # Define loss and optimization Op
             self._loss = tflearn.mean_square(self._actual_outputs, self._outputs)
             self._optimize = tf.train.AdamOptimizer(
@@ -53,40 +62,42 @@ class MultiPerceptronModelEstimator(object):
     def _create_model_network(self, scope):
         with tf.name_scope(scope):
             inputs = tflearn.input_data(shape=(None, self._state_dim), name="inputs")
+            # Normalize input(states)
+            normalized_inputs = tf.clip_by_value(normalize(inputs, self._state_rms), self._state_range[0],
+                    self._state_range[1])
             action = tflearn.input_data(shape=(None, self._action_dim), name="action")
 
-            net = tf.concat([inputs, action], axis=1)
+            net = tf.concat([normalized_inputs, action], axis=1)
 
             for i in range(len(self._h_layer_shapes) - 1):
                 net = tflearn.fully_connected(net, self._h_layer_shapes[i])
+                # Add l2 regularizer
+                tflearn.helpers.regularizer.add_weights_regularizer(net.W, "L2")
                 net = tflearn.layers.normalization.batch_normalization(net)
                 net = tflearn.activations.relu(net)
 
             # linear layer
             # Weights are init to Uniform[-3e-3, 3e-3]
             w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
-            outputs = tflearn.fully_connected(net, self._state_dim, weights_init=w_init, name="outputs")
+            outputs = tflearn.fully_connected(net, self._state_dim, weights_init=w_init, name="out")
+            # Add l2 regularizer
+            tflearn.helpers.regularizer.add_weights_regularizer(outputs.W, "L2")
         return inputs, action, outputs
 
     def update(self, inputs, action, actual_outputs):
-        inputs = self._state_processor.transform(inputs)
-        actual_outputs = self._state_processor.transform(actual_outputs)
-        return self._sess.run([self._outputs, self._optimize, self._loss], feed_dict={
+        return self._sess.run([self._denorm_outputs, self._optimize, self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,
             self._actual_outputs: actual_outputs
         })
 
     def predict(self, inputs, action):
-        outputs = self._sess.run(self._outputs, feed_dict={
+        return self._sess.run(self._denorm_outputs, feed_dict={
             self._inputs: inputs,
             self._action: action
         })
-        return self._state_processor.inverse_transform(outputs)
 
     def evaluate(self, inputs, action, actual_outputs):
-        inputs = self._state_processor.transform(inputs)
-        actual_outputs = self._state_processor.transform(actual_outputs)
         return self._sess.run([self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,
