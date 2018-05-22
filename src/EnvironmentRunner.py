@@ -100,7 +100,9 @@ def getArgParser():
     parser.add_argument("--replay-buffer-save-dir", help="directory for storing replay buffer")
     parser.add_argument("--replay-buffer-save-freq", help="replay buffer save frequency (per number of episodes", type=int,
             default=500)
-    parser.add_argument("--log-stats-freq", help="Stats log frequency (per number of episodes", type=int,
+    parser.add_argument("--log-stats-freq", help="Stats log frequency (per number of episodes)", type=int,
+            default=1)
+    parser.add_argument("--train-freq", help="Training frequency (per number of rollout steps)", type=int,
             default=1)
 
     parser.set_defaults(stop_agent_learning=False)

@@ -123,6 +123,7 @@ def MakeDPGAC2WithPrioritizedRBPEH2VEH2(session, env, args):
                 return_rms=return_rms,
                 num_updates=args.num_updates,
                 log_stats_freq=args.log_stats_freq,
+                train_freq=args.train_freq,
                 )
 
 def getArgParser():

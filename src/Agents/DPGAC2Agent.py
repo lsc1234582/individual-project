@@ -16,7 +16,7 @@ class AgentBase(object):
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1):
+            log_stats_freq=1, train_freq=1):
         self._sess = sess
         self._policy_estimator = policy_estimator
         self._value_estimator = value_estimator
@@ -75,6 +75,8 @@ class AgentBase(object):
 
         # Number of updates per training step
         self._num_updates = num_updates
+        # Training frequency in number of rollout steps
+        self._train_freq = train_freq
 
     def _sampleBatch(self, batch_size, **kwargs):
         return self._replay_buffer.sample_batch(batch_size=batch_size)
@@ -201,13 +203,6 @@ class AgentBase(object):
         self._actor_noise.reset()
 
     def act(self, observation, last_reward, termination, episode_start_num, episode_num, episode_num_var, is_learning=False):
-        self._episode_return += last_reward
-        self._step += 1
-        self._stats_tot_steps += 1
-        # Putting a limit on how long the a single trial can run for simplicity
-        if self._step > self._max_episode_length:
-            termination = True
-
         current_state = observation.reshape(1, -1)
 
         # Initialize the last state and action
@@ -224,6 +219,14 @@ class AgentBase(object):
             self._last_action = best_action
             return best_action, termination
 
+        # Book keeping
+        self._episode_return += last_reward
+        self._step += 1
+        self._stats_tot_steps += 1
+        # Putting a limit on how long the a single trial can run for simplicity
+        if self._step >= self._max_episode_length:
+            termination = True
+
         # Store the last step
         self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(), last_reward,
                 current_state.squeeze().copy(), termination)
@@ -231,23 +234,19 @@ class AgentBase(object):
         if self._normalize_states:
             self._state_rms.update(np.array([self._last_state]))
 
-        self._last_state = current_state.copy()
+        if not termination:
+            self._last_state = current_state.copy()
+            best_action = self._policy_estimator.predict(self._last_state)
+            # For stats purpose
+            best_action_q = self._value_estimator.predict(self._last_state, best_action)
+            self._stats_epoch_actions.append(best_action)
+            self._stats_epoch_Q.append(best_action_q)
+            # Add exploration noise when training
+            if is_learning:
+                best_action += self._actor_noise()
 
-        if is_learning and self._replay_buffer.size() >= self._minibatch_size and not self._stop_training:
-            self._train()
-
-        best_action = self._policy_estimator.predict(self._last_state)
-        # For stats purpose
-        best_action_q = self._value_estimator.predict(self._last_state, best_action)
-        self._stats_epoch_actions.append(best_action)
-        self._stats_epoch_Q.append(best_action_q)
-        # Add exploration noise when training
-        if is_learning:
-            best_action += self._actor_noise()
-
-        self._last_action = best_action
-
-        if termination:
+            self._last_action = best_action
+        else:
             episode_num_this_run = episode_num - episode_start_num + 1
             # Record cumulative reward of trial
             self._episode_returns.append(self._episode_return)
@@ -311,7 +310,15 @@ class AgentBase(object):
             self._last_action = None
             self.reset()
 
-        return best_action, termination
+        # Train step
+        if is_learning and self._replay_buffer.size() >= self._minibatch_size and not self._stop_training and\
+        (self._stats_tot_steps % self._train_freq == 0):
+            self._train()
+
+        if not termination:
+            return best_action, termination
+        else:
+            return None, termination
 
 class DPGAC2Agent(AgentBase):
     def __init__(self, sess, policy_estimator, value_estimator, replay_buffer,
@@ -906,12 +913,12 @@ class DPGAC2WithPrioritizedRB(AgentBase):
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1):
+            log_stats_freq=1, train_freq=1):
          super().__init__(sess, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
-            log_stats_freq)
+            log_stats_freq, train_freq)
          # Beta used in prioritized rb for importance sampling
          # TODO: Remove hardcoded value
          self._replay_buffer_beta = 1.0
