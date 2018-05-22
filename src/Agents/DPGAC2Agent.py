@@ -223,7 +223,7 @@ class AgentBase(object):
         self._episode_return += last_reward
         self._step += 1
         self._stats_tot_steps += 1
-        # Putting a limit on how long the a single trial can run for simplicity
+        # Set a limit on how long each episode is, despite what the environment responds.
         if self._step >= self._max_episode_length:
             termination = True
 

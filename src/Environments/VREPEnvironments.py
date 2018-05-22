@@ -28,6 +28,7 @@ class VREPPushTaskEnvironment(object):
     DEFAULT_TARGET_POSITION = [0.3, 0.8, 0.002]
     # Simulation delta time in seconds
     SIMULATION_DT = 0.05
+    MAX_STEP = 100
 
     def __init__(self, port=19991, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
                 mico_model_path="models/robots/non-mobile/MicoRobot.ttm"):
@@ -51,6 +52,7 @@ class VREPPushTaskEnvironment(object):
         vrep.simxStartSimulation(self.client_ID, vrep.simx_opmode_blocking)
         self._reset_yet = False
         self.mico_model_path = mico_model_path
+        self._step = 0
 
     def __enter__(self):
         return self
@@ -192,6 +194,7 @@ class VREPPushTaskEnvironment(object):
                 self.target_plane_handle)
 
         self.state = current_state
+        self._step = 0
 
         return current_state
 
@@ -232,10 +235,15 @@ class VREPPushTaskEnvironment(object):
             next_states.append(next_state)
             rewards.append(self.__class__.getRewards(self.state, actions[i]))
             self.state = np.copy(next_state)
+            self._step += 1
+            if self._step >= self.__class__.MAX_STEP:
+                break
 
         next_states = np.concatenate(next_states)
         rewards = np.array(rewards)
-        return next_states, rewards, False, None
+        done = self._step >= self.__class__.MAX_STEP
+        return next_states, rewards, done, None
+
 
 class VREPPushTaskMultiStepRewardEnvironment(VREPPushTaskEnvironment):
 
@@ -255,6 +263,7 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
     """
     # Reset time in seconds
     RESET_TIME = 1.2
+    MAX_STEP = 100
 
     def __init__(self, port=19991, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
                 mico_model_path="models/robots/non-mobile/MicoRobot.ttm"):
@@ -263,6 +272,7 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
         self.observation_space = Box((28,), (-999.0,), (999.0,))
         self._gripper_closing = True
         self._gripper_closing_vel = -0.04
+        self._step = 0
 
     def _tearDownDatastream(self):
         # tear down datastreams
@@ -349,6 +359,7 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
                 self.target_plane_handle)
 
         self.state = current_state
+        self._step = 0
         return current_state
 
 
@@ -385,10 +396,14 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
             next_states.append(next_state)
             rewards.append(VREPPushTaskEnvironment.getRewards(self.state[:24], actions[i, :6]))
             self.state = np.copy(next_state)
+            self._step += 1
+            if self._step >= self.__class__.MAX_STEP:
+                break
 
         next_states = np.concatenate(next_states)
         rewards = np.array(rewards)
-        return next_states, rewards, False, None
+        done = self._step >= self.__class__.MAX_STEP
+        return next_states, rewards, done, None
 
 
 def make(env_name, *args, **kwargs):
