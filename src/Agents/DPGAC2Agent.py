@@ -1110,18 +1110,18 @@ class ModelBasedAgent(AgentBase):
         from Environments.VREPEnvironments import VREPPushTaskEnvironment
         best_action = None
         max_horizon_reward = -float("inf")
-        current_state = np.copy(self._last_state)
         for i in range(self._num_random_action):
             horizon_reward = 0
             first_action = None
+            current_state = np.copy(self._last_state)
             for j in range(self._model_plan_horizon):
                 # TODO: Remove hard coded max velocity
                 action = generateRandomAction(1.0, 7).reshape(1, -1)
                 if j == 0:
                     first_action = action
-                next_state = current_state + self._model_estimator.predict(current_state, action)
                 horizon_reward += VREPPushTaskEnvironment.getRewards(current_state, action)
-                current_state = next_state
+                # Proceed to next state
+                current_state += self._model_estimator.predict(current_state, action)
             if best_action is None or horizon_reward > max_horizon_reward:
                 best_action = first_action
                 max_horizon_reward = horizon_reward
