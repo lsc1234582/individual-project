@@ -35,7 +35,7 @@ class MultiPerceptronModelEstimator(object):
             normalized_actual_outputs = tf.clip_by_value(normalize(self._actual_outputs, self._state_change_rms),
                     self._state_range[0], self._state_range[1])
             # Define loss and optimization Op
-            self._loss = tflearn.mean_square(self._actual_outputs, self._outputs)
+            self._loss = tflearn.mean_square(normalized_actual_outputs, self._outputs)
             self._optimize = tf.train.AdamOptimizer(
                 self._learning_rate).minimize(self._loss, name="optimize")
 
