@@ -1024,9 +1024,20 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             #print(weights.shape[0])
             #print(len(indexes))
             # Update the critic given the targets with weights
-            _, td_error, ve_weighted_loss, ve_loss = self._value_estimator.update_with_weights_and_n1s_td(
-                current_state_batch, action_batch, td_target, weights, nb_ns_td_target)
+            if nb_ns_td_target > 0:
+                _, td_error, ve_weighted_loss, ve_loss = self._value_estimator.update_with_weights_and_n1s_td(
+                    current_state_batch, action_batch, td_target, weights, nb_ns_td_target)
+            else:
+                _, td_error, ve_weighted_loss, ve_loss = self._value_estimator.update_with_weights(
+                    current_state_batch, action_batch, td_target, weights)
+
             self._stats_epoch_critic_loss.append(ve_weighted_loss)
+            #print("TD_ERROR")
+            #print(td_error)
+            #print("VE_WEIGHTED_LOSS")
+            #print(ve_weighted_loss)
+            #print("VE_LOSS")
+            #print(ve_loss)
 
             # NB: Use td_target because it's not pure estimate (reward as samples)
             if self._normalize_returns:

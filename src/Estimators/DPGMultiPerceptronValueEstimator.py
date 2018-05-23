@@ -150,6 +150,9 @@ class DPGMultiPerceptronValueEstimator(object):
             # Weights are init to Uniform[-3e-3, 3e-3]
             w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
             out = tflearn.fully_connected(net, 1, weights_init=w_init, name="out")
+            tflearn.helpers.regularizer.add_weights_regularizer(out.W, "L2")
+            out = tf.clip_by_value(out, self._return_range[0], self._return_range[1])
+
         return inputs, action, out
 
     def update(self, inputs, action, predicted_q_value):
