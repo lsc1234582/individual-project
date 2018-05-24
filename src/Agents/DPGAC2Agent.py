@@ -3,10 +3,12 @@ import random
 import tensorflow as tf
 import time
 import pprint
-
 from Utils import ReplayBuffer
 from Utils import getModuleLogger
 from Utils import generateRandomAction
+
+# TODO: Remove after debug
+#np.set_printoptions(threshold=np.nan, linewidth=200)
 
 # Module logger
 logger = getModuleLogger(__name__)
@@ -38,7 +40,7 @@ class AgentBase(object):
         # Summary and checkpoints
         # Agent stats related
         self._stats_sample = None
-        self._stats_sample_size = 1024
+        self._stats_sample_size = 100
 
         # The number of episodes to average total reward over; used for score
         self._num_rewards_to_average = min(100, self._num_episodes - 1)
@@ -1044,18 +1046,25 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
                 for k in range(num_step):
                     ns_td_target = ns_reward_batch[num_step-1-k:rollout_length-k] + self._discount_factor * ns_td_target
                 # Combine 1-step batches with n-step batches
-                current_state_batch = np.concatenate([current_state_batch, ns_current_state_batch[:nb_ns_td_target, :]], axis=0)
-                action_batch = np.concatenate([action_batch, ns_action_batch[:nb_ns_td_target, :]], axis=0)
-                td_target = np.concatenate([td_target, ns_td_target], axis=0)
-                weights = np.concatenate([weights, ns_weights[:nb_ns_td_target, :]], axis=0)
-                indexes = indexes + ns_indexes[:nb_ns_td_target]
+                # NOTE: no clash with previously sampled minibatch
+                #print("lalalallala")
+                #print(ns_indexes[:nb_ns_td_target])
+                ind_ns_ind = [(i, x) for (i, x) in enumerate(ns_indexes[:nb_ns_td_target]) if x not in indexes]
+                nb_ns_td_target = len(ind_ns_ind)
+                if nb_ns_td_target > 0:
+                    ind, ns_indexes = zip(*ind_ns_ind)
+                    current_state_batch = np.concatenate([current_state_batch, ns_current_state_batch[ind, :]], axis=0)
+                    action_batch = np.concatenate([action_batch, ns_action_batch[ind, :]], axis=0)
+                    td_target = np.concatenate([td_target, ns_td_target[ind, :]], axis=0)
+                    weights = np.concatenate([weights, ns_weights[ind, :]], axis=0)
+                    indexes = indexes + list(ns_indexes)
             else:
                 nb_ns_td_target = 0
 
             #print("WEIGHTS")
             #print(weights)
             #print("INDEXES")
-            #print(indexes)
+            #pprint.pprint(indexes)
             #print("TD_TARGET")
             #print(td_target)
             #print("ROLLOUT_LENGTH")
@@ -1099,10 +1108,24 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             #print("TDERROR!!!")
             #print(self._replay_buffer._it_sum.sum())
             #print(self._replay_buffer._it_min.min())
+            assert(not np.isnan(self._replay_buffer._it_sum.sum()))
+            assert(not np.isnan(self._replay_buffer._it_min.min()))
 
-            #print("ahdaowdaiwododhawido")
-            #print(priorities.shape)
+            #pp = pprint.PrettyPrinter(width=200, compact=True)
+            #print("Priorities")
+            ##print(priorities.shape)
+            #print("TMP_STATS:----------")
             #print(len(indexes))
+            #tmp_stats = np.concatenate([
+            #    np.reshape(indexes, (-1, 1)),
+            #    np.reshape(td_target, (-1, 1)),
+            #    np.reshape(td_error, (-1, 1)),
+            #    priorities,
+            #    np.reshape(weights, (-1, 1)),
+            #    ], axis=1)
+            #pp.pprint(tmp_stats)
+            #pp.pprint(ve_weighted_loss)
+            #pp.pprint(ve_loss)
             self._replay_buffer.update_priorities(indexes, priorities.flatten())
 
 

@@ -27,7 +27,7 @@ class PrioritizedReplayBufferTest(unittest.TestCase):
 
         sample_freq = [0 for _ in range(num_priorities)]
         for i in range(num_samples):
-            os, acs, rs, nos, ds, ws, idx = rb.sample_batch(minibatch_size, 1.0)
+            os, acs, rs, nos, ds, ws, idx = rb.sample_batch(minibatch_size, 1.0, no_repeat=False)
             sample_priority = []
             for i, o in enumerate(os):
                 sample_freq[o-1] += 1
@@ -39,6 +39,9 @@ class PrioritizedReplayBufferTest(unittest.TestCase):
         probs = list(map((lambda i : i ** alpha), priorities))
         prob_sum = sum(probs)
         probs = list(map((lambda i : i / prob_sum), probs))
+        #print("hahahaha")
+        #print(probs)
+        #print(sample_freq)
 
         self.assertTrue(np.all(np.abs(np.array(probs) - np.array(sample_freq)) < 1e-2))
 
@@ -106,13 +109,14 @@ class PrioritizedReplayBufferTest(unittest.TestCase):
         self.assertTrue(np.all(s1==data_col1) or np.all(s0==data_col3))
 
     def testBatchSizeBiggerThanActualSize(self):
+        # NOTE: Should produce assertion error
         rb_max_size = 40
         alpha = 0.3
-        minibatch_size = 5
         num_priorities = 10
         # Number of repetitions for each priority
-        num_rep = 4
+        num_rep = 1
         num_samples = 5
+        minibatch_size = 20
 
         rb = PrioritizedReplayBuffer(rb_max_size, alpha)
 
@@ -123,9 +127,81 @@ class PrioritizedReplayBufferTest(unittest.TestCase):
             for _ in range(num_rep):
                 rb.add(i, i, i, i, i)
 
-        os, acs, rs, nos, ds, ws, idx = rb.sample_batch(minibatch_size, 1.0)
-        print("RB SAMPLE")
-        print(os)
+        #os, acs, rs, nos, ds, ws, idx = rb.sample_batch(minibatch_size, 1.0, no_repeat=False)
+        #print("RB SAMPLE")
+        #print(os)
+
+    def testNoRepeatedSample(self):
+        # Construct replay buffer
+        rb_max_size = 40
+        alpha = 0.3
+        minibatch_size = 10
+        num_entries = 10
+        # Number of repetitions for the test
+        num_rep = 100
+
+        rb = PrioritizedReplayBuffer(rb_max_size, alpha)
+
+        for i in range(num_entries):
+            rb.add(i, i, i, i, i)
+
+        # Make the priority of last entry in the buffer really large
+        priorities = [1 for _ in range(num_entries)]
+        priorities[-1] = 100
+        rb.update_priorities(list(range(num_entries)), priorities)
+
+        def hasNoRepeats(arr, elem):
+            occurrence = 0
+            for e in arr:
+                if e == elem:
+                    if occurrence > 0:
+                        return False
+                    occurrence += 1
+            return True
+
+        for _ in range(num_rep):
+            _, _, _, _, _, _, idx = rb.sample_batch(minibatch_size, 1.0)
+            self.assertTrue(hasNoRepeats(idx, num_entries - 1))
+
+    def testNoRepeatSamplingFrequencyReflectsPriority(self):
+        """
+        No-repeat sampling should still reflect priority although not as much as with-repeat sampling
+
+        """
+        rb_max_size = 4000
+        alpha = 0.3
+        minibatch_size = 100
+        num_priorities = 10
+        num_samples = 2000
+
+        rb = PrioritizedReplayBuffer(rb_max_size, alpha)
+
+        priorities = [0 for _ in range(num_priorities)]
+        for i in range(1, num_priorities+1):
+            priority = i
+            priorities[i-1] = priority
+            for _ in range(100):
+                rb.add(i, i, i, i, i)
+
+        sample_freq = [0 for _ in range(num_priorities)]
+        for i in range(num_samples):
+            os, acs, rs, nos, ds, ws, idx = rb.sample_batch(minibatch_size, 1.0)
+            sample_priority = []
+            for i, o in enumerate(os):
+                sample_freq[o-1] += 1
+                sample_priority.append(o)
+                rb.update_priorities([idx[i]], [priorities[o-1]])
+
+        sample_freq_sum = sum(sample_freq)
+        sample_freq = list(map((lambda i: i/sample_freq_sum),sample_freq))
+        probs = list(map((lambda i : i ** alpha), priorities))
+        prob_sum = sum(probs)
+        probs = list(map((lambda i : i / prob_sum), probs))
+        #print("hahahaha")
+        #print(probs)
+        #print(sample_freq)
+
+        self.assertTrue(np.all(np.abs(np.array(probs) - np.array(sample_freq)) < 5e-2))
 
 
 if __name__ == '__main__':

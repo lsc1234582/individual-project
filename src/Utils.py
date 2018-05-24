@@ -297,7 +297,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_sum[idx] = self._max_priority ** self._alpha
         self._it_min[idx] = self._max_priority ** self._alpha
 
-    def _sample_proportional(self, batch_size):
+    def _sample_proportional(self, batch_size, no_repeat=True):
+        ps = []
         res = []
         for i in range(batch_size):
             # TODO(szymon): should we ensure no repeats?
@@ -307,7 +308,16 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             #mass = random.random() * self._it_sum.sum()
             mass = (i / batch_size + random.random() / batch_size) * self._it_sum.sum()
             idx = self._it_sum.find_prefixsum_idx(mass)
+            if no_repeat:
+                # Set priority at idx to 0 to ensure no repeats
+                ps.append(self._it_sum[idx])
+                self._it_sum[idx] = 0.0
             res.append(idx)
+
+        if no_repeat:
+            # Restore original priority
+            for idx, original_p in zip(res, ps):
+                self._it_sum[idx] = original_p
         return res
 
     #def sample_1_n_step_mix_batch(self, batch_size, beta):
@@ -333,7 +343,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     #    """
     #    return
 
-    def sample_batch(self, batch_size, beta):
+    def sample_batch(self, batch_size, beta, no_repeat=True):
         """Sample a batch of experiences.
 
         compared to ReplayBuffer.sample_batch
@@ -370,8 +380,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             idexes in buffer of sampled experiences
         """
         assert beta > 0
+        assert len(self._storage) >= batch_size
 
-        idxes = self._sample_proportional(batch_size)
+        idxes = self._sample_proportional(batch_size, no_repeat=no_repeat)
 
         weights = []
         p_min = self._it_min.min() / self._it_sum.sum()
