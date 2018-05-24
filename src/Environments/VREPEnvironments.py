@@ -29,8 +29,10 @@ class VREPPushTaskEnvironment(object):
     # Simulation delta time in seconds
     SIMULATION_DT = 0.05
     MAX_STEP = 100
+    action_space = Box((6,), (-1.0,), (1.0,))
+    observation_space = Box((24,), (-999.0,), (999.0,))
 
-    def __init__(self, port=19991, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
+    def __init__(self, port=19997, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
                 mico_model_path="models/robots/non-mobile/MicoRobot.ttm"):
         logger.info("Creating VREPPushTaskEnvironment")
         self._init_joint_pos = init_joint_pos if not init_joint_pos is None else VREPPushTaskEnvironment.DEFAULT_JOINT_POSITIONS
@@ -38,8 +40,6 @@ class VREPPushTaskEnvironment(object):
         self._init_cb_orient = init_cb_orient if not init_cb_orient is None else\
                                 VREPPushTaskEnvironment.DEFAULT_CUBOID_ORIENTATION
         self._init_tg_pos = init_tg_pos if not init_tg_pos is None else VREPPushTaskEnvironment.DEFAULT_TARGET_POSITION
-        self.action_space = Box((6,), (-1.0,), (1.0,))
-        self.observation_space = Box((24,), (-999.0,), (999.0,))
 
         vrep.simxFinish(-1) # just in case, close all opened connections
         self.client_ID=vrep.simxStart('127.0.0.1',port,True,True,5000,5) # Connect to V-REP
@@ -201,9 +201,22 @@ class VREPPushTaskEnvironment(object):
     def getRewards(state, action):
         """
             Return the sum of the Euclidean distance between gripper and cuboid and the Euclidean distance between cuboid and targetPlane.
+            Args
+            -------
+            state:   array(state_dim)/array(batch_size, state_dim)
+            action:  array(action_dim)/array(batch_size, action_dim)
+
+            Returns
+            -------
+            reward:  array(batch_size, 1)
+
             NB: Rewards should be non-negative
         """
-        return -(np.sqrt(np.sum(np.square(state[-6:-3]))) + np.sqrt(np.sum(np.square(state[-3:]))))
+        state = state.reshape(-1, VREPPushTaskEnvironment.observation_space.shape[0])
+        batch_size = state.shape[0]
+        action = action.reshape(batch_size, -1)
+        return (-(np.sqrt(np.sum(np.square(state[:, -6:-3]), axis=1)) + np.sqrt(np.sum(np.square(state[:, -3:]),
+            axis=1)))).reshape(batch_size, 1)
         #return -(np.sqrt(np.sum(np.square(action))))
         #return np.tanh(-(np.sqrt(np.sum(np.square(state[:1]))))/10.0) + 1.0
 
@@ -211,8 +224,19 @@ class VREPPushTaskEnvironment(object):
 
     def step(self, actions):
         """
-        Execute sequences of actions (None, 6) in the environment
+        Execute sequences of actions (None, action_dim) in the environment
         Return sequences of subsequent states and rewards
+
+        Args
+        -------
+        actions:  array(-1, action_dim)
+
+        Returns
+        -------
+        next_states:   array(-1, state_dim)
+        rewards:    array(-1, 1)
+        done:   Boolean
+        info:   None
         """
         next_states = []
         rewards = []
@@ -232,22 +256,22 @@ class VREPPushTaskEnvironment(object):
             # obtain next state
             next_state = self.getCurrentState(self.client_ID, self.joint_handles, self.gripper_handle, self.cuboid_handle,
                     self.target_plane_handle)
-            next_states.append(next_state)
+            next_states.append(next_state.reshape(1, -1))
             rewards.append(self.__class__.getRewards(self.state, actions[i]))
             self.state = np.copy(next_state)
             self._step += 1
             if self._step >= self.__class__.MAX_STEP:
                 break
 
-        next_states = np.concatenate(next_states)
-        rewards = np.array(rewards)
+        next_states = np.concatenate(next_states, axis=0)
+        rewards = np.concatenate(rewards, axis=0)
         done = self._step >= self.__class__.MAX_STEP
         return next_states, rewards, done, None
 
 
 class VREPPushTaskMultiStepRewardEnvironment(VREPPushTaskEnvironment):
 
-    def __init__(self, port=19991, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None):
+    def __init__(self, port=19997, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None):
         super().__init__(port, init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos)
 
     def getRewards(state, action):
@@ -264,12 +288,12 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
     # Reset time in seconds
     RESET_TIME = 1.2
     MAX_STEP = 100
+    action_space = Box((7,), (-1.0,), (1.0,))
+    observation_space = Box((28,), (-999.0,), (999.0,))
 
-    def __init__(self, port=19991, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
+    def __init__(self, port=19997, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
                 mico_model_path="models/robots/non-mobile/MicoRobot.ttm"):
         super().__init__(port, init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos, mico_model_path)
-        self.action_space = Box((7,), (-1.0,), (1.0,))
-        self.observation_space = Box((28,), (-999.0,), (999.0,))
         self._gripper_closing = True
         self._gripper_closing_vel = -0.04
         self._step = 0
@@ -283,6 +307,25 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
         _, _ = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f2_handle, 2012,
                 vrep.simx_opmode_discontinue)
         _, _ = vrep.simxGetJointPosition(self.client_ID, self.gripper_f2_handle, vrep.simx_opmode_discontinue)
+
+    def getRewards(state, action):
+        """
+            Return the sum of the Euclidean distance between gripper and cuboid and the Euclidean distance between cuboid and targetPlane.
+            Args
+            -------
+            state:   array(state_dim)/array(batch_size, state_dim)
+            action:  array(action_dim)/array(batch_size, action_dim)
+
+            Returns
+            -------
+            reward:  array(batch_size, 1)
+
+            NB: Rewards should be non-negative
+        """
+        state = state.reshape(-1, VREPPushTaskNonIKEnvironment.observation_space.shape[0])
+        batch_size = state.shape[0]
+        action = action.reshape(batch_size, -1)
+        return VREPPushTaskEnvironment.getRewards(state[:, :24], action[:, :6])
 
     def getCurrentState(self, client_ID, joint_handles, gripper_handle, cuboid_handle, target_plane_handle):
         """
@@ -365,8 +408,19 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
 
     def step(self, actions):
         """
-        Execute sequences of actions (None, 7) in the environment
+        Execute sequences of actions (None, action_dim) in the environment
         Return sequences of subsequent states and rewards
+
+        Args
+        -------
+        actions:  array(-1, action_dim)
+
+        Returns
+        -------
+        next_states:   array(-1, state_dim)
+        rewards:    array(-1, 1)
+        done:   Boolean
+        info:   None
         """
         next_states = []
         rewards = []
@@ -393,15 +447,15 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
             # obtain next state
             next_state = self.getCurrentState(self.client_ID, self.joint_handles, self.gripper_handle, self.cuboid_handle,
                     self.target_plane_handle)
-            next_states.append(next_state)
-            rewards.append(VREPPushTaskEnvironment.getRewards(self.state[:24], actions[i, :6]))
+            next_states.append(next_state.reshape(1, -1))
+            rewards.append(VREPPushTaskNonIKEnvironment.getRewards(self.state, actions))
             self.state = np.copy(next_state)
             self._step += 1
             if self._step >= self.__class__.MAX_STEP:
                 break
 
-        next_states = np.concatenate(next_states)
-        rewards = np.array(rewards)
+        next_states = np.concatenate(next_states, axis=0)
+        rewards = np.concatenate(rewards, axis=0)
         done = self._step >= self.__class__.MAX_STEP
         return next_states, rewards, done, None
 

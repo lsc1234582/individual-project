@@ -16,7 +16,7 @@ class AgentBase(object):
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1, train_freq=1):
+            log_stats_freq=1, train_freq=1, eval_replay_buffer=None):
         self._sess = sess
         self._discount_factor = discount_factor
         self._num_episodes = num_episodes
@@ -64,6 +64,8 @@ class AgentBase(object):
         self._replay_buffer_save_dir = replay_buffer_save_dir
         self._replay_buffer_save_freq = replay_buffer_save_freq
 
+        self._eval_replay_buffer = eval_replay_buffer
+
         self._normalize_states = normalize_states
         self._state_rms = state_rms
         self._normalize_returns = normalize_returns
@@ -74,8 +76,8 @@ class AgentBase(object):
         # Training frequency in number of rollout steps
         self._train_freq = train_freq
 
-    def _sampleBatch(self, batch_size, **kwargs):
-        return self._replay_buffer.sample_batch(batch_size=batch_size)
+    def _sampleBatch(self, rb, batch_size, **kwargs):
+        return rb.sample_batch(batch_size=batch_size)
 
     def _getStats(self):
         # Auxiliary data to pass to child class
@@ -84,7 +86,7 @@ class AgentBase(object):
         if self._stats_sample is None:
             # Get a sample and keep that fixed for all further computations.
             # This allows us to estimate the change in value for the same set of inputs.
-            self._stats_sample = self._sampleBatch(self._stats_sample_size)
+            self._stats_sample = self._sampleBatch(self._replay_buffer, self._stats_sample_size)
         # Add normalization stats
         ops = []
         names = []
@@ -99,7 +101,7 @@ class AgentBase(object):
         values = self._sess.run(ops)
         assert len(names) == len(values)
         stats = dict(zip(names, values))
-        stats_sample_action = self._getBestAction()
+        stats_sample_action = self._getBestAction(self._stats_sample[0])
         aux["stats_sample_action"] = stats_sample_action
         stats["agent_sample_action_mean"] = np.mean(stats_sample_action)
         stats["agent_sample_action_std"] = np.std(stats_sample_action)
@@ -178,8 +180,14 @@ class AgentBase(object):
         logger.info("{} loaded".format(self.__class__.__name__))
 
     def loadReplayBuffer(self, path):
+        assert self._replay_buffer is not None
         self._replay_buffer.load(path)
         logger.info("Replay buffer loaded")
+
+    def loadEvalReplayBuffer(self, path):
+        assert self._eval_replay_buffer is not None
+        self._eval_replay_buffer.load(path)
+        logger.info("Evaluation replay buffer loaded")
 
     def score(self):
         return self._best_average_episode_return
@@ -192,21 +200,39 @@ class AgentBase(object):
             self._state_rms.update(np.array([self._last_state]))
 
 
-    def act(self, observation, last_reward, termination, episode_start_num, episode_num, episode_num_var, is_learning=False):
-        current_state = observation.reshape(1, -1)
+    def act(self, current_state, last_reward, termination, episode_start_num, episode_num, episode_num_var, is_learning=False):
+        """
+        NB: Although the shape of the inputs are all batch version, this function only deals with single-step
+        transition. This means the "batch_size" is always 1
 
+        Args
+        -------
+        observation:        array(-1, state_dim)
+        last_reward:        array(-1, 1)
+        termination:        Boolean
+        episode_start_num:  Int
+        episode_num:        Int
+        episode_num_var:    tf.Variable
+        is_learning:        Boolean
+
+        Returns
+        -------
+        best_action:        array(-1, action_dim)
+        termination:        Boolean
+        """
         # Initialize the last state and action
         if self._last_state is None:
             self._last_state = current_state
-            best_action = self._getBestAction()
+            best_action = self._getBestAction(self._last_state)
             # Add exploration noise when training
             if is_learning:
                 best_action += self._actor_noise()
             self._last_action = best_action
+            self._recordLogAfterBestAction(state=self._last_state, best_action=best_action)
             return best_action, termination
 
         # Book keeping
-        self._episode_return += last_reward
+        self._episode_return += last_reward.squeeze()
         self._step += 1
         self._stats_tot_steps += 1
         # Set a limit on how long each episode is, despite what the environment responds.
@@ -214,17 +240,19 @@ class AgentBase(object):
             termination = True
 
         # Store the last step
-        self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(), last_reward,
+        self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(),
+                last_reward.squeeze(),
                 current_state.squeeze().copy(), termination)
         self._normalizationUpdateAfterRB(current_state=current_state)
 
 
         if not termination:
             self._last_state = current_state.copy()
-            best_action = self._getBestAction()
+            best_action = self._getBestAction(self._last_state)
             # Add exploration noise when training
             if is_learning:
                 best_action += self._actor_noise()
+            self._recordLogAfterBestAction(state=self._last_state, best_action=best_action)
 
             self._last_action = best_action
         else:
@@ -253,7 +281,7 @@ class AgentBase(object):
             logger.info(log_string.format(episode_num, self._num_episodes + episode_start_num - 1,
                 episode_num_this_run,
                 self._num_episodes,
-                self._episode_return[0], average, improve_str))
+                self._episode_return, average, improve_str))
 
             # Log stats
             if is_learning and episode_num % self._log_stats_freq == 0:
@@ -291,10 +319,14 @@ class AgentBase(object):
             self._last_action = None
             self.reset()
 
-        # Train step
-        if is_learning and self._replay_buffer.size() >= self._minibatch_size and not self._stop_training and\
-        (self._stats_tot_steps % self._train_freq == 0):
-            self._train()
+        if self._stats_tot_steps % self._train_freq == 0:
+            # Train step
+            if is_learning and self._replay_buffer.size() >= self._minibatch_size and not self._stop_training:
+                self._train()
+
+            # Evaluate step
+            if self._eval_replay_buffer is not None and self._eval_replay_buffer.size() >= self._minibatch_size:
+                self._evaluate()
 
         if not termination:
             return best_action, termination
@@ -306,12 +338,12 @@ class DPGAC2Agent(AgentBase):
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1, train_freq=1):
+            log_stats_freq=1, train_freq=1, eval_replay_buffer=None):
         super().__init__(sess, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
-            log_stats_freq, train_freq)
+            log_stats_freq, train_freq, eval_replay_buffer)
 
         self._policy_estimator = policy_estimator
         self._value_estimator = value_estimator
@@ -345,18 +377,24 @@ class DPGAC2Agent(AgentBase):
 
         return stats, aux
 
-    def _getBestAction(self):
-        best_action = self._policy_estimator.predict(self._last_state)
-        # For stats purpose
-        best_action_q = self._value_estimator.predict(self._last_state, best_action)
+    def _getBestAction(self, state):
+        best_action = self._policy_estimator.predict(state)
+        return best_action
+
+    def _recordLogAfterBestAction(self, *args, **kwargs):
+        """
+        Record various metric for stats purpose
+        """
+        state = kwargs["state"]
+        best_action = kwargs["best_action"]
+        best_action_q = self._value_estimator.predict(state, best_action)
         self._stats_epoch_actions.append(best_action)
         self._stats_epoch_Q.append(best_action_q)
-        return best_action
 
     def _train(self):
         for _ in range(self._num_updates):
             current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch =\
-                    self._sampleBatch(self._minibatch_size)
+                    self._sampleBatch(self._replay_buffer, self._minibatch_size)
             current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)
             action_batch = action_batch.reshape(self._minibatch_size, -1)
             reward_batch = reward_batch.reshape(self._minibatch_size, -1)
@@ -398,6 +436,9 @@ class DPGAC2Agent(AgentBase):
             self._policy_estimator.update_target_network()
             self._value_estimator.update_target_network()
 
+    def _evaluate(self):
+        pass
+
 
 class DPGAC2WithDemoAgent(AgentBase):
     def __init__(self, sess, policy_estimator, value_estimator, replay_buffer,
@@ -424,7 +465,7 @@ class DPGAC2WithDemoAgent(AgentBase):
         """
         logger.info("Training policy with demo")
         for i in range(epochs):
-            for exp in self._sampleBatch(self._minibatch_size):
+            for exp in self._sampleBatch(self._replay_buffer, self._minibatch_size):
                 current_state_batch, action_batch, _, _, _ = exp
                 current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)
                 action_batch = action_batch.reshape(self._minibatch_size, -1)
@@ -442,7 +483,7 @@ class DPGAC2WithDemoAgent(AgentBase):
         epochs:  int - Number of iterations to train nns on all experiences
         """
         for i in range(epochs):
-            for exp in self._sampleBatch(self._minibatch_size):
+            for exp in self._sampleBatch(self._replay_buffer, self._minibatch_size):
                 current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch = exp
                 current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)
                 action_batch = action_batch.reshape(self._minibatch_size, -1)
@@ -596,7 +637,7 @@ class DPGAC2WithDemoAgent(AgentBase):
     def _train(self):
         for _ in range(self._num_updates):
             current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch =\
-                    self._sampleBatch(self._minibatch_size)
+                    self._sampleBatch(self._replay_buffer, self._minibatch_size)
             current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)
             action_batch = action_batch.reshape(self._minibatch_size, -1)
             reward_batch = reward_batch.reshape(self._minibatch_size, -1)
@@ -674,7 +715,7 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
         TODO: Don't iterate over whole rb as the training time increases over time as rb expands
         """
         for i in range(epochs):
-            for exp in self._sampleBatch(self._minibatch_size):
+            for exp in self._sampleBatch(self._replay_buffer, self._minibatch_size):
                 current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch = exp
                 model_loss = self._model_estimator.update(current_state_batch, action_batch, next_state_batch - current_state_batch)
                 self._model_summary_writer.writeSummary({
@@ -703,7 +744,7 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
         TODO: Don't iterate over whole rb as the training time increases over time as rb expands
         """
         for i in range(epochs):
-            for exp in self._sampleBatch(self._minibatch_size):
+            for exp in self._sampleBatch(self._replay_buffer, self._minibatch_size):
                 current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch = exp
                 current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)
                 action_batch = action_batch.reshape(self._minibatch_size, -1)
@@ -885,7 +926,7 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
     def _train(self):
         for _ in range(self._num_updates):
             current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch =\
-                    self._sampleBatch(self._minibatch_size)
+                    self._sampleBatch(self._replay_buffer, self._minibatch_size)
             current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)
             action_batch = action_batch.reshape(self._minibatch_size, -1)
             reward_batch = reward_batch.reshape(self._minibatch_size, -1)
@@ -934,26 +975,26 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1, train_freq=1):
+            log_stats_freq=1, train_freq=1, eval_replay_buffer=None):
          super().__init__(sess, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
-            log_stats_freq, train_freq)
+            log_stats_freq, train_freq, eval_replay_buffer)
          # Beta used in prioritized rb for importance sampling
          # TODO: Remove hardcoded value
          self._replay_buffer_beta = 1.0
 
-    def _sampleBatch(self, batch_size, **kwargs):
+    def _sampleBatch(self, rb, batch_size, **kwargs):
         beta = kwargs["beta"] if "beta" in kwargs else self._replay_buffer_beta
 
-        return self._replay_buffer.sample_batch(batch_size=batch_size, beta=beta)
+        return rb.sample_batch(batch_size=batch_size, beta=beta)
 
     def _train(self):
         for _ in range(self._num_updates):
             # Calculate 1-step targets
             current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch, weights, indexes =\
-                    self._sampleBatch(self._minibatch_size, beta=self._replay_buffer_beta)
+                    self._sampleBatch(self._replay_buffer, self._minibatch_size, beta=self._replay_buffer_beta)
             current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)
             action_batch = action_batch.reshape(self._minibatch_size, -1)
             reward_batch = reward_batch.reshape(self._minibatch_size, -1)
@@ -1078,22 +1119,29 @@ class ModelBasedAgent(AgentBase):
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, state_change_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1, train_freq=1):
+            log_stats_freq=1, train_freq=1, eval_replay_buffer=None):
         super().__init__(sess, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
-            log_stats_freq, train_freq)
+            log_stats_freq, train_freq, eval_replay_buffer)
 
         self._model_estimator = model_estimator
+
         self._stats_epoch_Q = []
         self._stats_epoch_model_loss = []
+        if self._eval_replay_buffer is not None:
+            self._stats_epoch_model_eval_loss = []
+            #TODO: remove hard coded
+            self._num_evals = 10
+
         #TODO: remove hard coded
         # Number of random actions to take
-        self._num_random_action = 100
+        self._num_random_action = 20
         # Planning horizon for model-based learning
         self._model_plan_horizon = 5
         self._state_change_rms = state_change_rms
+
 
     def _initialize(self):
         pass
@@ -1108,36 +1156,65 @@ class ModelBasedAgent(AgentBase):
             stats["state_change_rms_std"] = values[1]
         # Epoch stats
         stats['epoch/model_loss'] = np.mean(self._stats_epoch_model_loss)
+        if self._eval_replay_buffer is not None:
+            stats['epoch/model_eval_loss'] = np.mean(self._stats_epoch_model_eval_loss)
         # Clear epoch statistics.
         self._stats_epoch_model_loss = []
+        if self._eval_replay_buffer is not None:
+            self._stats_epoch_model_eval_loss = []
 
         return stats, aux
 
-    def _getBestAction(self):
+    def _getBestAction(self, state):
         """
         Assume reward function is given
+
+        Args
+        -------
+        state:          array(state_dim)/array(-1, state_dim)
+
+        Returns
+        best_action:    array(-1, action_dim)
+        -------
         """
+        assert self._num_random_action != 0
+        assert self._model_plan_horizon != 0
         # TODO: Remove explicit reward from explicit environment
         from Environments.VREPEnvironments import VREPPushTaskEnvironment
+        from Environments.VREPEnvironments import VREPPushTaskNonIKEnvironment
+        state = state.reshape(-1, self._model_estimator._state_dim)
+        batch_size = state.shape[0]
+
         best_action = None
-        max_horizon_reward = -float("inf")
+        max_horizon_reward = np.zeros((batch_size, 1)) - float("inf")
         for i in range(self._num_random_action):
-            horizon_reward = 0
             first_action = None
-            current_state = np.copy(self._last_state)
+            horizon_reward = np.zeros((batch_size, 1))
+            current_state = np.copy(state)
             for j in range(self._model_plan_horizon):
                 # TODO: Remove hard coded max velocity
-                action = generateRandomAction(1.0, 7).reshape(1, -1)
+                action = generateRandomAction(1.0, 7 * batch_size).reshape(batch_size, -1)
                 if j == 0:
                     first_action = action
-                horizon_reward += VREPPushTaskEnvironment.getRewards(current_state, action)
+                horizon_reward += VREPPushTaskNonIKEnvironment.getRewards(current_state, action)
                 # Proceed to next state
                 current_state += self._model_estimator.predict(current_state, action)
-            if best_action is None or horizon_reward > max_horizon_reward:
+            if best_action is None:
                 best_action = first_action
                 max_horizon_reward = horizon_reward
-        self._stats_epoch_actions.append(best_action)
+            else:
+                better_action_indx = (horizon_reward > max_horizon_reward).squeeze()
+                best_action[better_action_indx, :] = first_action[better_action_indx, :]
+                max_horizon_reward[better_action_indx, :] = horizon_reward[better_action_indx, :]
+
         return best_action
+
+    def _recordLogAfterBestAction(self, *args, **kwargs):
+        """
+        Record various metric for stats purpose
+        """
+        best_action = kwargs["best_action"]
+        self._stats_epoch_actions.append(best_action)
 
     def _normalizationUpdateAfterRB(self, *args, **kwargs):
         if self._normalize_states:
@@ -1146,11 +1223,12 @@ class ModelBasedAgent(AgentBase):
             self._state_change_rms.update(np.array([state_change]))
 
     def _train(self):
+        # Train
         #print("training model!!")
         #print(self._num_updates)
         for _ in range(self._num_updates):
             current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch =\
-                    self._sampleBatch(self._minibatch_size)
+                    self._sampleBatch(self._replay_buffer, self._minibatch_size)
             current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)
             action_batch = action_batch.reshape(self._minibatch_size, -1)
             reward_batch = reward_batch.reshape(self._minibatch_size, -1)
@@ -1162,3 +1240,18 @@ class ModelBasedAgent(AgentBase):
             if np.isnan(model_loss):
                 logger.error("Training: model estimator loss is nan, stop training")
                 self._stop_training = True
+
+    def _evaluate(self):
+        # Evaluation
+        for _ in range(self._num_evals):
+            current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch =\
+                    self._sampleBatch(self._eval_replay_buffer, self._minibatch_size)
+            current_state_batch = current_state_batch.reshape(self._minibatch_size, -1)
+            action_batch = action_batch.reshape(self._minibatch_size, -1)
+            reward_batch = reward_batch.reshape(self._minibatch_size, -1)
+            next_state_batch = next_state_batch.reshape(self._minibatch_size, -1)
+
+            model_eval_loss = self._model_estimator.evaluate(current_state_batch, action_batch, next_state_batch -\
+                    current_state_batch)
+            self._stats_epoch_model_eval_loss.append(model_eval_loss)
+

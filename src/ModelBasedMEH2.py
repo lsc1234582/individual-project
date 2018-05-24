@@ -70,6 +70,10 @@ def MakeModelBasedMEH2(session, env, args):
     estimator_saver_best = tf.train.Saver(max_to_keep=1)
 
     replay_buffer = ReplayBuffer(10 ** args.replay_buffer_size_log)
+    if args.eval_replay_buffer_load_dir is not None:
+        eval_replay_buffer = ReplayBuffer(10 ** args.replay_buffer_size_log)
+    else:
+        eval_replay_buffer = None
 
     actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_space_dim))
 
@@ -97,6 +101,7 @@ def MakeModelBasedMEH2(session, env, args):
                 num_updates=args.num_updates,
                 log_stats_freq=args.log_stats_freq,
                 train_freq=args.train_freq,
+                eval_replay_buffer=eval_replay_buffer,
                 )
 
 def getArgParser():

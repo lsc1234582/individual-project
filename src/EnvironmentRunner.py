@@ -37,9 +37,12 @@ def runEnvironmentWithAgent(args):
         else:
             logger.info("Restoring agent from {}".format(args.estimator_dir))
             agent.load(args.estimator_dir, is_best=(args.estimator_load_mode==1))
-        if not args.replay_buffer_load_dir is None:
+        if args.replay_buffer_load_dir is not None:
             logger.info("Restoring replay buffer from {}".format(args.replay_buffer_load_dir))
             agent.loadReplayBuffer(args.replay_buffer_load_dir)
+        if args.eval_replay_buffer_load_dir is not None and agent._eval_replay_buffer is not None:
+            logger.info("Restoring evaluation replay buffer from {}".format(args.eval_replay_buffer_load_dir))
+            agent.loadEvalReplayBuffer(args.eval_replay_buffer_load_dir)
 
 
         episode_start = session.run(global_episode_num) + 1
@@ -105,6 +108,7 @@ def getArgParser():
     parser.add_argument("--num-updates", help="number of estimator updates per training step", type=int, default=1)
     parser.add_argument("--train-freq", help="Training frequency (per number of rollout steps)", type=int,
             default=1)
+    parser.add_argument("--eval-replay-buffer-load-dir", help="directory for loading evaluation replay buffer")
 
     parser.set_defaults(stop_agent_learning=False)
     parser.set_defaults(render_env=False)

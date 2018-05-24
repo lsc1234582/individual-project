@@ -6,17 +6,19 @@ from EnvironmentFactory import EnvironmentContext
 
 def runEnvironmentWithAgent(args):
     rb = ReplayBuffer(10 ** args.replay_buffer_size_log)
-    with EnvironmentContext(args.env_name) as env:
+    with EnvironmentContext(args.env_name, port=19997) as env:
         # To record progress across different training sessions
         # Run the environment feedback loop
+        assert(np.all(np.array(env.action_space.high) == - np.array(env.action_space.low)))
         for episode_num in range(args.num_episodes):
             state = env.reset()
             for step in range(args.max_episode_length):
-                action = generateRandomAction(1.0)
+                # NOTE: Assume uniform high
+                action = generateRandomAction(env.action_space.high[0], env.action_space.shape[0])
                 next_state, reward, done, _ = env.step(action.reshape(1, -1))
                 if step == args.max_episode_length - 1:
                     done = True
-                rb.add(state, action, reward, done, next_state)
+                rb.add(state, action, reward, next_state, done)
                 state = np.copy(next_state)
                 #logger.debug("Observation")
                 #logger.debug(observation)
