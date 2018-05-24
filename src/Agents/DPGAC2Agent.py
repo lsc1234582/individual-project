@@ -207,8 +207,8 @@ class AgentBase(object):
 
         Args
         -------
-        observation:        array(-1, state_dim)
-        last_reward:        array(-1, 1)
+        observation:        array(state_dim)/array(-1, state_dim)
+        last_reward:        array(1)/array(-1, 1)
         termination:        Boolean
         episode_start_num:  Int
         episode_num:        Int
@@ -220,6 +220,7 @@ class AgentBase(object):
         best_action:        array(-1, action_dim)
         termination:        Boolean
         """
+        current_state = current_state.reshape(1, -1)
         # Initialize the last state and action
         if self._last_state is None:
             self._last_state = current_state

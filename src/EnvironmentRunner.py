@@ -50,7 +50,7 @@ def runEnvironmentWithAgent(args):
         # Run the environment feedback loop
         for episode_num in range(episode_start, episode_start + args.num_episodes):
             observation = env.reset()
-            reward = 0.0
+            reward = np.array([0.0])
             done = False
             action, done = agent.act(observation, reward, done, episode_start, episode_num, global_episode_num,
                     is_learning=(not args.stop_agent_learning))
