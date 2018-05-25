@@ -90,7 +90,7 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
     estimator_saver_recent = tf.train.Saver(max_to_keep=args.max_estimators_to_keep)
     estimator_saver_best = tf.train.Saver(max_to_keep=1)
 
-    replay_buffer = ReplayBuffer(10 ** args.replay_buffer_size_log)
+    replay_buffer = ReplayBuffer(10 ** args.replay_buffer_size_log, debug=True)
 
     actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_space_dim))
 

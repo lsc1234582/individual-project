@@ -89,8 +89,14 @@ class SegmentTree(object):
             idx //= 2
 
     def __getitem__(self, idx):
-        assert 0 <= idx < self._capacity
-        return self._value[self._capacity + idx]
+        if isinstance(idx, slice):
+            #start = idx.start + self._capacity if idx.start is not None else self._capacity
+            #stop = idx.stop + self._capacity if idx.stop is not None else 2*self._capacity
+
+            return (self._value[self._capacity:])[idx.start:idx.stop:idx.step]
+        else:
+            assert 0 <= idx < self._capacity
+            return self._value[self._capacity + idx]
 
 
 class SumSegmentTree(SegmentTree):

@@ -6,6 +6,7 @@ import pprint
 from Utils import ReplayBuffer
 from Utils import getModuleLogger
 from Utils import generateRandomAction
+import pickle as pk
 
 # TODO: Remove after debug
 #np.set_printoptions(threshold=np.nan, linewidth=200)
@@ -352,6 +353,8 @@ class DPGAC2Agent(AgentBase):
         self._value_estimator = value_estimator
         self._stats_epoch_Q = []
         self._stats_epoch_critic_loss = []
+        #TODO: Remove DEBUG
+        self._debug_freq = 200
 
     def _initialize(self):
         self._policy_estimator.update_target_network(tau=1.0)
@@ -426,6 +429,11 @@ class DPGAC2Agent(AgentBase):
             a_outs = self._policy_estimator.predict(current_state_batch)
             grads = self._value_estimator.action_gradients(current_state_batch, a_outs)
             self._policy_estimator.update(current_state_batch, grads[0])
+
+            #TODO: Remove DEBUG
+            if self._stats_tot_steps % self._debug_freq == 0:
+                with open("DEBUG_rb_freq.pkl", "wb") as f:
+                    pk.dump(self._replay_buffer.debug_get_sample_freq(), f)
 
             # Early stop
             if np.isnan(ve_loss):
@@ -987,6 +995,9 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
          # Beta used in prioritized rb for importance sampling
          # TODO: Remove hardcoded value
          self._replay_buffer_beta = 1.0
+         #TODO: Remove DEBUG
+         self._debug_freq = 200
+
 
     def _sampleBatch(self, rb, batch_size, **kwargs):
         beta = kwargs["beta"] if "beta" in kwargs else self._replay_buffer_beta
@@ -994,6 +1005,8 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
         return rb.sample_batch(batch_size=batch_size, beta=beta)
 
     def _train(self):
+        pp = pprint.PrettyPrinter(width=200, compact=True)
+
         for _ in range(self._num_updates):
             # Calculate 1-step targets
             current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch, weights, indexes =\
@@ -1049,6 +1062,13 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
                 # NOTE: no clash with previously sampled minibatch
                 #print("lalalallala")
                 #print(ns_indexes[:nb_ns_td_target])
+                #pp.pprint("Before selection:")
+                #tmp_stats = np.concatenate([
+                #    np.reshape(ns_indexes[:nb_ns_td_target], (-1, 1)),
+                #    np.reshape(ns_td_target, (-1, 1)),
+                #    np.reshape(ns_weights[:nb_ns_td_target, :], (-1, 1)),
+                #    ], axis=1)
+                #pp.pprint(tmp_stats)
                 ind_ns_ind = [(i, x) for (i, x) in enumerate(ns_indexes[:nb_ns_td_target]) if x not in indexes]
                 nb_ns_td_target = len(ind_ns_ind)
                 if nb_ns_td_target > 0:
@@ -1058,6 +1078,16 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
                     td_target = np.concatenate([td_target, ns_td_target[ind, :]], axis=0)
                     weights = np.concatenate([weights, ns_weights[ind, :]], axis=0)
                     indexes = indexes + list(ns_indexes)
+
+                    #pp.pprint("After selection:")
+                    #tmp_stats = np.concatenate([
+                    #    np.reshape(ns_indexes, (-1, 1)),
+                    #    np.reshape(ns_td_target[ind, :], (-1, 1)),
+                    #    np.reshape(ns_weights[ind, :], (-1, 1)),
+                    #    ], axis=1)
+                    #pp.pprint(ind)
+                    #pp.pprint(tmp_stats)
+            #pp.pprint(tmp_stats)
             else:
                 nb_ns_td_target = 0
 
@@ -1110,6 +1140,13 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             #print(self._replay_buffer._it_min.min())
             assert(not np.isnan(self._replay_buffer._it_sum.sum()))
             assert(not np.isnan(self._replay_buffer._it_min.min()))
+
+            #TODO: Remove DEBUG
+            if self._stats_tot_steps % self._debug_freq == 0:
+                with open("DEBUG_rb_freq.pkl", "wb") as f:
+                    pk.dump(self._replay_buffer.debug_get_sample_freq(), f)
+                with open("DEBUG_rb_priorities.pkl", "wb") as f:
+                    pk.dump(self._replay_buffer.debug_get_priorities(), f)
 
             #pp = pprint.PrettyPrinter(width=200, compact=True)
             #print("Priorities")

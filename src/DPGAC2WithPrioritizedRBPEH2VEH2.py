@@ -95,7 +95,7 @@ def MakeDPGAC2WithPrioritizedRBPEH2VEH2(session, env, args):
 
     # TODO: remove hardcoded value
     alpha = 0.3
-    replay_buffer = PrioritizedReplayBuffer(10 ** args.replay_buffer_size_log, alpha)
+    replay_buffer = PrioritizedReplayBuffer(10 ** args.replay_buffer_size_log, alpha, debug=True)
 
     actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_space_dim))
 

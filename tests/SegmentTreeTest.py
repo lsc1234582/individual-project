@@ -97,5 +97,21 @@ class SegmentTreeTest(unittest.TestCase):
         self.assertTrue(np.isclose(tree.min(2, -1), 4.0))
         self.assertTrue(np.isclose(tree.min(3, 4), 3.0))
 
+    def testSumSegmentTreeSliceReturn(self):
+        tree = SumSegmentTree(4)
+
+        tree[0] = 0.5
+        tree[1] = 1.0
+        tree[2] = 1.0
+        tree[3] = 3.0
+
+        gt = [0.5, 1.0, 1.0, 3.0]
+
+        self.assertEqual(gt, tree[:])
+        self.assertEqual(gt[:2], tree[:2])
+        self.assertEqual(gt[:-1], tree[:-1])
+        self.assertEqual(gt[::-1], tree[::-1])
+        self.assertEqual(gt[0:4:2], tree[0:4:2])
+
 if __name__ == '__main__':
     unittest.main()

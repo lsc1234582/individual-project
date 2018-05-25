@@ -69,19 +69,22 @@ class SortedDisplayDict(dict):
        return "{" + ", ".join("%r: %r" % (key, self[key]) for key in sorted(self)) + "}"
 
 class ReplayBuffer(object):
-    def __init__(self, size):
+    def __init__(self, size, debug=False):
         """Create Replay buffer.
 
         Parameters
         ----------
         size: int
-            Max number of transitions to store in the buffer. When the buffer
-            overflows the old memories are dropped.
+            Max number of transitions to store in the buffer. When the buffer overflows the old memories are dropped.
         """
         self._storage = []
         self._maxsize = size
         self._next_idx = 0
         self._is_bkup = False
+        self._debug = debug
+        # _debug_freq is a list of frequencies; its indexes correspond to the indexes of the replay buffer
+        if self._debug:
+            self._debug_freq = []
         self._stats_estimate_sample_size = int(1e4)
 
     def __eq__(self, other):
@@ -145,6 +148,8 @@ class ReplayBuffer(object):
 
     def clear(self):
         self._storage.clear()
+        if self._debug:
+            self._debug_freq.clear()
         self._next_idx = 0
 
     def __len__(self):
@@ -158,8 +163,13 @@ class ReplayBuffer(object):
 
         if self._next_idx >= len(self._storage):
             self._storage.append(data)
+            if self._debug:
+                self._debug_freq.append(0)
         else:
             self._storage[self._next_idx] = data
+            if self._debug:
+                self._debug_freq[self._next_idx] = 0
+
         self._next_idx = (self._next_idx + 1) % self._maxsize
 
     def _encode_sample(self, idxes):
@@ -224,11 +234,19 @@ class ReplayBuffer(object):
             the end of an episode and 0 otherwise.
         """
         idxes = [random.randint(0, len(self._storage) - 1) for _ in range(batch_size)]
+        if self._debug:
+            for idx in idxes:
+                self._debug_freq[idx] += 1
+
         return self._encode_sample(idxes)
+
+    def debug_get_sample_freq(self):
+        assert self._debug
+        return self._debug_freq
 
 
 class PrioritizedReplayBuffer(ReplayBuffer):
-    def __init__(self, size, alpha):
+    def __init__(self, size, alpha, debug=False):
         """Create Prioritized Replay buffer.
 
         Parameters
@@ -244,7 +262,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         --------
         ReplayBuffer.__init__
         """
-        super(PrioritizedReplayBuffer, self).__init__(size)
+        super(PrioritizedReplayBuffer, self).__init__(size, debug)
         assert alpha >= 0
         self._alpha = alpha
 
@@ -392,6 +410,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             p_sample = self._it_sum[idx] / self._it_sum.sum()
             weight = (p_sample * len(self._storage)) ** (-beta)
             weights.append(weight / max_weight)
+            if self._debug:
+                self._debug_freq[idx] += 1
         weights = np.array(weights)
         encoded_sample = self._encode_sample(idxes)
         return tuple(list(encoded_sample) + [weights, idxes])
@@ -413,6 +433,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             p_sample = self._it_sum[idx] / self._it_sum.sum()
             weight = (p_sample * len(self._storage)) ** (-beta)
             weights.append(weight / max_weight)
+            if self._debug:
+                self._debug_freq[idx] += 1
         weights = np.array(weights)
         encoded_sample = self._encode_sample(idxes)
         return tuple(list(encoded_sample) + [weights, idxes])
@@ -441,6 +463,13 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self._it_min[idx] = priority ** self._alpha
 
             self._max_priority = max(self._max_priority, priority)
+
+    def debug_get_priorities(self):
+        """
+        Returns [attenuated] priorities
+        """
+        assert self._debug
+        return self._it_sum[:len(self._storage)]
 
 #class ReplayBuffer(object):
 #
