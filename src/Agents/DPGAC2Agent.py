@@ -9,7 +9,7 @@ from Utils import generateRandomAction
 import pickle as pk
 
 # TODO: Remove after debug
-#np.set_printoptions(threshold=np.nan, linewidth=200)
+np.set_printoptions(threshold=np.nan, linewidth=200)
 
 # Module logger
 logger = getModuleLogger(__name__)
@@ -1133,7 +1133,11 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             # Calculate and update new priorities for sampled transitions
             #TODO: Remove hardcoded value
             lambda3 = 0.1
+            lambda2 = 0.1    # Must be the same as in the estimator
             epislon = 1e-3
+            print("HAHA")
+            print(td_error.shape[0] - nb_ns_td_target)
+            td_error[td_error.shape[0] - nb_ns_td_target:] *= lambda2
             priorities = np.square(td_error) + lambda3 * np.square(np.linalg.norm(grads)) + epislon
             #print("TDERROR!!!")
             #print(self._replay_buffer._it_sum.sum())
