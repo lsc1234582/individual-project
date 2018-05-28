@@ -1174,21 +1174,21 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
                 with open("DEBUG_rb_priorities.pkl", "wb") as f:
                     pk.dump(self._replay_buffer.debug_get_priorities(), f)
 
-            pp = pprint.PrettyPrinter(width=200, compact=True)
-            print("Priorities")
-            #print(priorities.shape)
-            print("TMP_STATS:----------")
-            print(len(indexes))
-            tmp_stats = np.concatenate([
-                np.reshape(indexes, (-1, 1)),
-                np.reshape(td_target, (-1, 1)),
-                np.reshape(td_error, (-1, 1)),
-                priorities,
-                np.reshape(weights, (-1, 1)),
-                ], axis=1)
-            pp.pprint(tmp_stats)
-            pp.pprint(ve_weighted_loss)
-            pp.pprint(ve_loss)
+            #pp = pprint.PrettyPrinter(width=200, compact=True)
+            #print("Priorities")
+            ##print(priorities.shape)
+            #print("TMP_STATS:----------")
+            #print(len(indexes))
+            #tmp_stats = np.concatenate([
+            #    np.reshape(indexes, (-1, 1)),
+            #    np.reshape(td_target, (-1, 1)),
+            #    np.reshape(td_error, (-1, 1)),
+            #    priorities,
+            #    np.reshape(weights, (-1, 1)),
+            #    ], axis=1)
+            #pp.pprint(tmp_stats)
+            #pp.pprint(ve_weighted_loss)
+            #pp.pprint(ve_loss)
             self._replay_buffer.update_priorities(indexes, priorities.flatten())
 
 
