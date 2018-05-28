@@ -1157,8 +1157,8 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             lambda3 = 0.1
             lambda2 = 0.1    # Must be the same as in the estimator
             epislon = 1e-3
-            print("HAHA")
-            print(td_error.shape[0] - nb_ns_td_target)
+            #print("HAHA")
+            #print(td_error.shape[0] - nb_ns_td_target)
             td_error[td_error.shape[0] - nb_ns_td_target:] *= lambda2
             priorities = np.square(td_error) + lambda3 * np.square(np.linalg.norm(grads)) + epislon
             #print("TDERROR!!!")
@@ -1174,21 +1174,21 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
                 with open("DEBUG_rb_priorities.pkl", "wb") as f:
                     pk.dump(self._replay_buffer.debug_get_priorities(), f)
 
-            pp = pprint.PrettyPrinter(width=200, compact=True)
-            print("Priorities")
-            #print(priorities.shape)
-            print("TMP_STATS:----------")
-            print(len(indexes))
-            tmp_stats = np.concatenate([
-                np.reshape(indexes, (-1, 1)),
-                np.reshape(td_target, (-1, 1)),
-                np.reshape(td_error, (-1, 1)),
-                priorities,
-                np.reshape(weights, (-1, 1)),
-                ], axis=1)
-            pp.pprint(tmp_stats)
-            pp.pprint(ve_weighted_loss)
-            pp.pprint(ve_loss)
+            #pp = pprint.PrettyPrinter(width=200, compact=True)
+            #print("Priorities")
+            ##print(priorities.shape)
+            #print("TMP_STATS:----------")
+            #print(len(indexes))
+            #tmp_stats = np.concatenate([
+            #    np.reshape(indexes, (-1, 1)),
+            #    np.reshape(td_target, (-1, 1)),
+            #    np.reshape(td_error, (-1, 1)),
+            #    priorities,
+            #    np.reshape(weights, (-1, 1)),
+            #    ], axis=1)
+            #pp.pprint(tmp_stats)
+            #pp.pprint(ve_weighted_loss)
+            #pp.pprint(ve_loss)
             self._replay_buffer.update_priorities(indexes, priorities.flatten())
 
 
