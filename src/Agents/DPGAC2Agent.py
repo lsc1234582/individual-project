@@ -1028,110 +1028,7 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
                     td_target.append(reward_batch[k] + self._discount_factor * predicted_target_q[k])
             td_target = np.reshape(td_target, (-1, 1))
 
-            # Calculate n-step targets
-            #TODO: Remove hardcoded N
-            # Calculate 10-step targets
-            num_step = 10
-            ns_current_state_batch, ns_action_batch, ns_reward_batch, ns_next_state_batch, ns_termination_batch,\
-                    ns_weights, ns_indexes, is_ns_complete=\
-                        self._replay_buffer.sample_episode(self._replay_buffer_beta)
-            ns_current_state_batch = ns_current_state_batch.reshape(-1, self._value_estimator._state_dim)
-            ns_action_batch = ns_action_batch.reshape(-1, self._value_estimator._action_dim)
-            ns_reward_batch = ns_reward_batch.reshape(-1, 1)
-            ns_next_state_batch = ns_next_state_batch.reshape(-1, self._value_estimator._state_dim)
-            ns_weights = ns_weights.reshape(-1, 1)
-            rollout_length = ns_next_state_batch.shape[0]
-            assert(rollout_length > 0)
-
-            # NOTE: Only carry out n-step targets mix if the sampled episode is a complete one
-            if is_ns_complete:
-                # Initialise ns_td_target
-                # NOTE: Bootstrap till(excluding) the rollout_length - num_step transition
-                # and use pure returns for the last num_step transitions
-                nb_ns_td_target = rollout_length
-                ns_td_target = np.zeros((nb_ns_td_target, 1))
-                bootstrap_end_idx = rollout_length - num_step
-                ns_td_target[:bootstrap_end_idx] = self._value_estimator.predict_target(
-                        ns_next_state_batch[num_step-1:rollout_length-1],
-                        self._policy_estimator.predict_target(ns_next_state_batch[num_step-1:rollout_length-1]))
-                #print("NS_TD_TARGET")
-                #print(ns_td_target)
-                for k in range(num_step):
-                    ns_td_target = np.concatenate([ns_reward_batch[num_step-k-1:rollout_length],
-                        np.zeros((num_step-k-1, 1))
-                        ], axis=0) + self._discount_factor * ns_td_target
-                # num_step = 2, rollout_length = 5
-                # 11100
-                # batch:
-                # current_state: s0 s1 s2 s3 s4
-                # rewards:       r0 r1 r2 r3 r4
-                # next_state:    s1 s2 s3 s4 s5(terminal)
-                # goal(ignoring discount):
-                # [r0+r1+v2 r1+r2+v3 r2+r3+v4 r3+r4+0 r4+0+0]
-                # init:
-                # [v2 v3 v4 0 0]
-                # +[r1 r2 r3 r4 0]
-                # +[r0 r1 r2 r3 r4]
-                # ####-
-                # num_step = 3, rollout_lenth = 5
-                # goal(ignoring discount):
-                # [r0+r1+r2+v3 r1+r2+r3+v4 r2+r3+r4+0 r3+r4+0+0 r4+0+0+0]
-                # init:
-                # [v3 v4 0 0 0]
-                # +[r2 r3 r4 0 0]
-                # +[r1 r2 r3 r4 0]
-                # +[r0 r1 r2 r3 r4]
-                # Combine 1-step batches with n-step batches
-                # NOTE: no clash with previously sampled minibatch
-                #print("lalalallala")
-                #print(ns_indexes[:nb_ns_td_target])
-                #pp.pprint("Before selection:")
-                #tmp_stats = np.concatenate([
-                #    np.reshape(ns_indexes[:nb_ns_td_target], (-1, 1)),
-                #    np.reshape(ns_td_target, (-1, 1)),
-                #    np.reshape(ns_weights[:nb_ns_td_target, :], (-1, 1)),
-                #    ], axis=1)
-                #pp.pprint(tmp_stats)
-                ind_ns_ind = [(i, x) for (i, x) in enumerate(ns_indexes[:nb_ns_td_target]) if x not in indexes]
-                nb_ns_td_target = len(ind_ns_ind)
-                if nb_ns_td_target > 0:
-                    ind, ns_indexes = zip(*ind_ns_ind)
-                    current_state_batch = np.concatenate([current_state_batch, ns_current_state_batch[ind, :]], axis=0)
-                    action_batch = np.concatenate([action_batch, ns_action_batch[ind, :]], axis=0)
-                    td_target = np.concatenate([td_target, ns_td_target[ind, :]], axis=0)
-                    weights = np.concatenate([weights, ns_weights[ind, :]], axis=0)
-                    indexes = indexes + list(ns_indexes)
-
-                    #pp.pprint("After selection:")
-                    #tmp_stats = np.concatenate([
-                    #    np.reshape(ns_indexes, (-1, 1)),
-                    #    np.reshape(ns_td_target[ind, :], (-1, 1)),
-                    #    np.reshape(ns_weights[ind, :], (-1, 1)),
-                    #    ], axis=1)
-                    #pp.pprint(ind)
-                    #pp.pprint(tmp_stats)
-            #pp.pprint(tmp_stats)
-            else:
-                nb_ns_td_target = 0
-            #print("WEIGHTS")
-            #print(weights)
-            #print("INDEXES")
-            #pprint.pprint(indexes)
-            #print("TD_TARGET")
-            #print(td_target)
-            #print("ROLLOUT_LENGTH")
-            #print(rollout_length)
-            #print(current_state_batch.shape[0])
-            #print(action_batch.shape[0])
-            #print(td_target.shape[0])
-            #print(weights.shape[0])
-            #print(len(indexes))
-            # Update the critic given the targets with weights
-            if nb_ns_td_target > 0:
-                _, td_error, ve_weighted_loss, ve_loss = self._value_estimator.update_with_weights_and_n1s_td(
-                    current_state_batch, action_batch, td_target, weights, nb_ns_td_target)
-            else:
-                _, td_error, ve_weighted_loss, ve_loss = self._value_estimator.update_with_weights(
+            _, td_error, ve_weighted_loss, ve_loss = self._value_estimator.update_with_weights(
                     current_state_batch, action_batch, td_target, weights)
 
             self._stats_epoch_critic_loss.append(ve_weighted_loss)
@@ -1155,11 +1052,9 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             # Calculate and update new priorities for sampled transitions
             #TODO: Remove hardcoded value
             lambda3 = 0.1
-            lambda2 = 0.1    # Must be the same as in the estimator
             epislon = 1e-3
             #print("HAHA")
             #print(td_error.shape[0] - nb_ns_td_target)
-            td_error[td_error.shape[0] - nb_ns_td_target:] *= lambda2
             priorities = np.square(td_error) + lambda3 * np.square(np.linalg.norm(grads)) + epislon
             #print("TDERROR!!!")
             #print(self._replay_buffer._it_sum.sum())
