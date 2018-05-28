@@ -1033,7 +1033,7 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             # Calculate 10-step targets
             num_step = 10
             ns_current_state_batch, ns_action_batch, ns_reward_batch, ns_next_state_batch, ns_termination_batch,\
-                    ns_weights, ns_indexes =\
+                    ns_weights, ns_indexes, is_ns_complete=\
                         self._replay_buffer.sample_episode(self._replay_buffer_beta)
             ns_current_state_batch = ns_current_state_batch.reshape(-1, self._value_estimator._state_dim)
             ns_action_batch = ns_action_batch.reshape(-1, self._value_estimator._action_dim)
@@ -1043,21 +1043,44 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             rollout_length = ns_next_state_batch.shape[0]
             assert(rollout_length > 0)
 
-            #TODO: Use action from the last transition instead? Since it's already available. Investigate
-            # Only calculate n1mix target when the sampled rollout contains greater than num_step number of transitions
-            if rollout_length > num_step:
+            # NOTE: Only carry out n-step targets mix if the sampled episode is a complete one
+            if is_ns_complete:
                 # Initialise ns_td_target
-                # Note that start bootstrapping from the second-to-last transition, ie use estimate on the last 'current
-                # state' and use pure reward for the last transition
-                nb_ns_td_target = rollout_length - num_step + 1
+                # NOTE: Bootstrap till(excluding) the rollout_length - num_step transition
+                # and use pure returns for the last num_step transitions
+                nb_ns_td_target = rollout_length
                 ns_td_target = np.zeros((nb_ns_td_target, 1))
-                ns_td_target[:-1] = self._value_estimator.predict_target(
+                bootstrap_end_idx = rollout_length - num_step
+                ns_td_target[:bootstrap_end_idx] = self._value_estimator.predict_target(
                         ns_next_state_batch[num_step-1:rollout_length-1],
                         self._policy_estimator.predict_target(ns_next_state_batch[num_step-1:rollout_length-1]))
                 #print("NS_TD_TARGET")
                 #print(ns_td_target)
                 for k in range(num_step):
-                    ns_td_target = ns_reward_batch[num_step-1-k:rollout_length-k] + self._discount_factor * ns_td_target
+                    ns_td_target = np.concatenate([ns_reward_batch[num_step-k-1:rollout_length],
+                        np.zeros((num_step-k-1, 1))
+                        ], axis=0) + self._discount_factor * ns_td_target
+                # num_step = 2, rollout_length = 5
+                # 11100
+                # batch:
+                # current_state: s0 s1 s2 s3 s4
+                # rewards:       r0 r1 r2 r3 r4
+                # next_state:    s1 s2 s3 s4 s5(terminal)
+                # goal(ignoring discount):
+                # [r0+r1+v2 r1+r2+v3 r2+r3+v4 r3+r4+0 r4+0+0]
+                # init:
+                # [v2 v3 v4 0 0]
+                # +[r1 r2 r3 r4 0]
+                # +[r0 r1 r2 r3 r4]
+                # ####-
+                # num_step = 3, rollout_lenth = 5
+                # goal(ignoring discount):
+                # [r0+r1+r2+v3 r1+r2+r3+v4 r2+r3+r4+0 r3+r4+0+0 r4+0+0+0]
+                # init:
+                # [v3 v4 0 0 0]
+                # +[r2 r3 r4 0 0]
+                # +[r1 r2 r3 r4 0]
+                # +[r0 r1 r2 r3 r4]
                 # Combine 1-step batches with n-step batches
                 # NOTE: no clash with previously sampled minibatch
                 #print("lalalallala")
@@ -1090,7 +1113,6 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             #pp.pprint(tmp_stats)
             else:
                 nb_ns_td_target = 0
-
             #print("WEIGHTS")
             #print(weights)
             #print("INDEXES")
@@ -1152,21 +1174,21 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
                 with open("DEBUG_rb_priorities.pkl", "wb") as f:
                     pk.dump(self._replay_buffer.debug_get_priorities(), f)
 
-            #pp = pprint.PrettyPrinter(width=200, compact=True)
-            #print("Priorities")
-            ##print(priorities.shape)
-            #print("TMP_STATS:----------")
-            #print(len(indexes))
-            #tmp_stats = np.concatenate([
-            #    np.reshape(indexes, (-1, 1)),
-            #    np.reshape(td_target, (-1, 1)),
-            #    np.reshape(td_error, (-1, 1)),
-            #    priorities,
-            #    np.reshape(weights, (-1, 1)),
-            #    ], axis=1)
-            #pp.pprint(tmp_stats)
-            #pp.pprint(ve_weighted_loss)
-            #pp.pprint(ve_loss)
+            pp = pprint.PrettyPrinter(width=200, compact=True)
+            print("Priorities")
+            #print(priorities.shape)
+            print("TMP_STATS:----------")
+            print(len(indexes))
+            tmp_stats = np.concatenate([
+                np.reshape(indexes, (-1, 1)),
+                np.reshape(td_target, (-1, 1)),
+                np.reshape(td_error, (-1, 1)),
+                priorities,
+                np.reshape(weights, (-1, 1)),
+                ], axis=1)
+            pp.pprint(tmp_stats)
+            pp.pprint(ve_weighted_loss)
+            pp.pprint(ve_loss)
             self._replay_buffer.update_priorities(indexes, priorities.flatten())
 
 
