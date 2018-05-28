@@ -185,6 +185,15 @@ class ReplayBuffer(object):
         return np.array(obses_t), np.array(actions), np.array(rewards), np.array(obses_tp1), np.array(dones)
 
     def _retrieve_eps_from_transition(self, rand_idx):
+        """ Retrieve a complete episode indexes which includes rand_idx.
+        Assumes the replay buffer stores the transition data in order.
+        NOTE:
+            The retrieved indexes always include the true start but not necessarily the true end. The end returned by
+            this method may be the true end, and it may also be the end of the replay buffer, which is not necessarily
+            the end of an episode. In other words, this method may return incomplete episode transitions towards the
+            end.
+        """
+        assert 0 <= rand_idx < len(self._storage)
 
         # Locate the first transition from the episode which includes rand_idx transition
         start_idx = rand_idx - 1
@@ -200,16 +209,17 @@ class ReplayBuffer(object):
         while not get_scalar(done) and end_idx < len(self._storage) - 1:
             end_idx += 1
             _, _, _, _, done = self._storage[end_idx]
+        _, _, _, _, is_complete = self._storage[end_idx]
         end_idx += 1
-        return list(range(start_idx, end_idx))
+        return list(range(start_idx, end_idx)), get_scalar(is_complete)
 
     def sample_episode(self):
         """Sample a complete episode rollout.
         """
         rand_idx = random.randint(0, len(self._storage) - 1)
 
-        idxes = self._retrieve_eps_from_transition(rand_idx)
-        return self._encode_sample(idxes)
+        idxes, is_complete = self._retrieve_eps_from_transition(rand_idx)
+        return tuple(list[self._encode_sample(idxes)] + [is_complete])
 
     def sample_batch(self, batch_size):
         """Sample a batch of experiences.
@@ -432,7 +442,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         rand_idx = self._sample_proportional(1)[0]
 
-        idxes = self._retrieve_eps_from_transition(rand_idx)
+        idxes, is_complete = self._retrieve_eps_from_transition(rand_idx)
 
         weights = []
         p_min = self._it_min.min() / self._it_sum.sum()
@@ -446,7 +456,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 self._debug_freq[idx] += 1
         weights = np.array(weights)
         encoded_sample = self._encode_sample(idxes)
-        return tuple(list(encoded_sample) + [weights, idxes])
+        return tuple(list(encoded_sample) + [weights, idxes, is_complete])
 
 
     def update_priorities(self, idxes, priorities):
