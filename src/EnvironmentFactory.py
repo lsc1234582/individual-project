@@ -17,8 +17,8 @@ ENVS = {
         "VREPPushTaskContact2": VREPEnvironments.make,
         "VREPPushTaskMultiStepReward": VREPEnvironments.make,
         "VREPPushTaskMultiStepRewardContact2": VREPEnvironments.make,
-        "VREPPushTaskNonIK": VREPEnvironments.make,
-        "VREPPushTaskIK": VREPEnvironments.make,
+        "VREPPushTask7DoF": VREPEnvironments.make,
+        "VREPPushTask7DoFIK": VREPEnvironments.make,
         }
 
 def MakeEnvironment(env_name, *args, **kwargs):
@@ -41,7 +41,7 @@ class EnvironmentContext(object):
 if __name__ == "__main__":
     #"""
     # Simple interactive program to test/debug environment
-    with EnvironmentContext("VREPPushTaskNonIK") as env:
+    with EnvironmentContext("VREPPushTask7DoF") as env:
         print("resetting")
         env.reset()
         print("resetted")

@@ -312,7 +312,7 @@ class VREPPushTaskMultiStepRewardEnvironment(VREPPushTaskEnvironment):
             return -gripper_cube_dist
         return -gripper_cube_dist + 1 - np.sqrt(np.sum(np.square(state[-3:])))
 
-class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
+class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
     """
     Distance unit: m
     Maximum distance between target and cuboid: 2m; this will affect the reward function for VREPPushTaskMultiStepRewardEnvironment
@@ -352,7 +352,7 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
 
             NB: Rewards should be non-negative
         """
-        state = state.reshape(-1, VREPPushTaskNonIKEnvironment.observation_space.shape[0])
+        state = state.reshape(-1, VREPPushTask7DoFEnvironment.observation_space.shape[0])
         batch_size = state.shape[0]
         action = action.reshape(batch_size, -1)
         return VREPPushTaskEnvironment.getRewards(state[:, :24], action[:, :6])
@@ -370,7 +370,7 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
         state_str:          String      Formatted string
         """
         state = state.flatten()
-        assert(state.shape[0] == VREPPushTaskNonIKEnvironment.observation_space.shape[0])
+        assert(state.shape[0] == VREPPushTask7DoFEnvironment.observation_space.shape[0])
         state_str = super().getStateString(state[:24])
         state_str += "gripper_joint_vel: {}\ngripper_joint_angles: {}\n".format(
                 state[24:26], state[26:28])
@@ -503,7 +503,7 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
             next_state = self.getCurrentState(self.client_ID, self.joint_handles, self.gripper_handle, self.cuboid_handle,
                     self.target_plane_handle)
             next_states.append(next_state.reshape(1, -1))
-            rewards.append(VREPPushTaskNonIKEnvironment.getRewards(self.state, actions))
+            rewards.append(VREPPushTask7DoFEnvironment.getRewards(self.state, actions))
             self.state = np.copy(next_state)
             self._step += 1
             if self._isDone():
@@ -513,7 +513,7 @@ class VREPPushTaskNonIKEnvironment(VREPPushTaskEnvironment):
         rewards = np.concatenate(rewards, axis=0)
         return next_states, rewards, self._isDone(), None
 
-class VREPPushTaskIKEnvironment(VREPPushTaskNonIKEnvironment):
+class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
     """
     Distance unit: m
     Maximum distance between target and cuboid: 2m; this will affect the reward function for VREPPushTaskMultiStepRewardEnvironment
@@ -637,7 +637,7 @@ class VREPPushTaskIKEnvironment(VREPPushTaskNonIKEnvironment):
                 #print("step13")
                 next_states.append(next_state.reshape(1, -1))
                 # NOTE: actions is not relevant in calculating rewards
-                rewards.append(VREPPushTaskNonIKEnvironment.getRewards(self.state, actions[:, :7]))
+                rewards.append(VREPPushTask7DoFEnvironment.getRewards(self.state, actions[:, :7]))
                 #print("step14")
                 self.state = np.copy(next_state)
                 #print("step2")
@@ -654,7 +654,6 @@ class VREPPushTaskIKEnvironment(VREPPushTaskNonIKEnvironment):
         else:
             next_states = None
         return next_states, rewards, self._isDone(), None
-
 
 
 def make(env_name, *args, **kwargs):
@@ -681,16 +680,28 @@ def make(env_name, *args, **kwargs):
                 init_cb_pos=[-0.55, 0., 0.05],
                 init_tg_pos=[-0.8, 0., 0.002],
                 )
-    elif env_name == "VREPPushTaskNonIK":
-        return VREPPushTaskNonIKEnvironment(
+    elif env_name == "VREPPushTask7DoF":
+        return VREPPushTask7DoFEnvironment(
                 *args,
                 **kwargs,
-                mico_model_path="models/robots/non-mobile/MicoRobotNonIK.ttm")
-    elif env_name == "VREPPushTaskIK":
-        return VREPPushTaskIKEnvironment(
+                mico_model_path="models/robots/non-mobile/MicoRobot7DoF.ttm")
+    elif env_name == "VREPPushTask7DoFIK":
+        return VREPPushTask7DoFIKEnvironment(
                 *args,
                 **kwargs,
-                mico_model_path="models/robots/non-mobile/MicoRobotIK2.ttm")
+                mico_model_path="models/robots/non-mobile/MicoRobot7DoFIK.ttm")
+    elif env_name == "VREPPushTask7DoFSparseRewards":
+        #TODO:
+        return
+    elif env_name == "VREPPushTask7DoFSparseRewardsIK":
+        #TODO:
+        return
+    elif env_name == "VREPGraspTask7DoFSparseRewards":
+        #TODO:
+        return
+    elif env_name == "VREPGraspTask7DoFSparseRewardsIK":
+        #TODO:
+        return
     elif env_name == "VREPPushTaskContact":
         return VREPPushTaskEnvironment(
                 *args,

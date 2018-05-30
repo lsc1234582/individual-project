@@ -1246,7 +1246,7 @@ class ModelBasedAgent(AgentBase):
         assert self._model_plan_horizon != 0
         # TODO: Remove explicit reward from explicit environment
         from Environments.VREPEnvironments import VREPPushTaskEnvironment
-        from Environments.VREPEnvironments import VREPPushTaskNonIKEnvironment
+        from Environments.VREPEnvironments import VREPPushTask7DoFEnvironment
         state = state.reshape(-1, self._model_estimator._state_dim)
         batch_size = state.shape[0]
 
@@ -1261,7 +1261,7 @@ class ModelBasedAgent(AgentBase):
                 action = generateRandomAction(1.0, 7 * batch_size).reshape(batch_size, -1)
                 if j == 0:
                     first_action = action
-                horizon_reward += VREPPushTaskNonIKEnvironment.getRewards(current_state, action)
+                horizon_reward += VREPPushTask7DoFEnvironment.getRewards(current_state, action)
                 # Proceed to next state
                 current_state += self._model_estimator.predict(current_state, action)
             if best_action is None:
