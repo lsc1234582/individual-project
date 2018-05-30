@@ -690,7 +690,6 @@ class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
         cube_to_target_dist = np.sqrt(np.sum(np.square(next_state[:, 21:24])))
         #if cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1:
         if cube_to_target_dist <= 0:
-            print("GOT IT")
             reward = 100
         else:
             reward = -0.5
@@ -700,13 +699,13 @@ class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
         state = self.state.reshape(1, -1)
         assert(state.shape[1] == self.observation_space.shape[0])
         cube_to_target_dist = np.sqrt(np.sum(np.square(state[:, 21:24])))
-        print("HAHA")
-        print(cube_to_target_dist)
-        print(self.MAX_STEP)
-        print(self.CUBOID_SIDE_LENGTH / 2 + 0.1)
         #return cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1 or self._step >= self.MAX_STEP
         return cube_to_target_dist <= 0 or self._step >= self.MAX_STEP
 
+
+class VREPPushTask7DoFSparseRewardsIKEnvironment (VREPPushTask7DoFSparseRewardsEnvironment,
+        VREPPushTask7DoFIKEnvironment):
+    pass
 
 
 def make(env_name, *args, **kwargs):
@@ -749,8 +748,11 @@ def make(env_name, *args, **kwargs):
                 **kwargs,
                 )
     elif env_name == "VREPPushTask7DoFSparseRewardsIK":
-        #TODO:
-        return
+        return VREPPushTask7DoFSparseRewardsIKEnvironment(
+                *args,
+                **kwargs,
+                mico_model_path="models/robots/non-mobile/MicoRobot7DoFIK.ttm",
+                )
     elif env_name == "VREPGraspTask7DoFSparseRewards":
         #TODO:
         return

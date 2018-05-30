@@ -2,6 +2,7 @@ import argparse
 from Environments.VREPEnvironments import VREPPushTask7DoFIKEnvironment
 from Environments.VREPEnvironments import VREPPushTaskEnvironment
 from Environments.VREPEnvironments import VREPPushTask7DoFEnvironment
+from Environments.VREPEnvironments import VREPPushTask7DoFSparseRewardsIKEnvironment
 import numpy as np
 import tkinter as tk
 from Utils import ReplayBuffer
@@ -131,13 +132,13 @@ class Application(tk.Frame):
         if self.enter in keys:
             # Step
             action[self.step_ind] = 1
-            return action.reshape(1, -1)
-        action[self.step_ind] = -1
+        else:
+            action[self.step_ind] = -1
         if self.r in keys:
             # Reset tip target
             action[self.reset_tt_ind] = 1
-            return action.reshape(1, -1)
-        action[self.reset_tt_ind] = -1
+        else:
+            action[self.reset_tt_ind] = -1
         if self.num_8 in keys:
             action[self.x_ind] += self.d_pos
         if self.num_2 in keys:
@@ -256,7 +257,7 @@ if __name__ == "__main__":
     if args.replay_buffer_load_dir is not None:
         replay_buffer.load(args.replay_buffer_load_dir)
 
-    with VREPPushTask7DoFIKEnvironment(mico_model_path="models/robots/non-mobile/MicoRobot7DoFIK.ttm") as env:
+    with VREPPushTask7DoFSparseRewardsIKEnvironment(mico_model_path="models/robots/non-mobile/MicoRobot7DoFIK.ttm") as env:
         #env.reset()
         root = tk.Tk()
         app = Application(master=root, env=env, replay_buffer=replay_buffer, args=args)
