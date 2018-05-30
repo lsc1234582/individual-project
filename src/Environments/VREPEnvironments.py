@@ -227,13 +227,14 @@ class VREPPushTaskEnvironment(VREPEnvironment):
 
         return current_state
 
-    def getRewards(state, action):
+    def getRewards(self, state, action, next_state):
         """
             Return the sum of the Euclidean distance between gripper and cuboid and the Euclidean distance between cuboid and targetPlane.
             Args
             -------
             state:   array(state_dim)/array(batch_size, state_dim)
             action:  array(action_dim)/array(batch_size, action_dim)
+            next_state:   array(state_dim)/array(batch_size, state_dim)
 
             Returns
             -------
@@ -244,6 +245,7 @@ class VREPPushTaskEnvironment(VREPEnvironment):
         state = state.reshape(-1, VREPPushTaskEnvironment.observation_space.shape[0])
         batch_size = state.shape[0]
         action = action.reshape(batch_size, -1)
+        next_state = next_state.reshape(batch_size, -1)
         return (-(np.sqrt(np.sum(np.square(state[:, -6:-3]), axis=1)) + np.sqrt(np.sum(np.square(state[:, -3:]),
             axis=1)))).reshape(batch_size, 1)
         #return -(np.sqrt(np.sum(np.square(action))))
@@ -274,6 +276,8 @@ class VREPPushTaskEnvironment(VREPEnvironment):
         next_states = []
         rewards = []
         for i in range(actions.shape[0]):
+            if self._isDone():
+                break
             current_vel = self.state[:6] + actions[i, :]
             vrep.simxPauseCommunication(self.client_ID, 1)
             for j in range(6):
@@ -290,11 +294,9 @@ class VREPPushTaskEnvironment(VREPEnvironment):
             next_state = self.getCurrentState(self.client_ID, self.joint_handles, self.gripper_handle, self.cuboid_handle,
                     self.target_plane_handle)
             next_states.append(next_state.reshape(1, -1))
-            rewards.append(VREPPushTaskEnvironment.getRewards(self.state, actions[i]))
+            rewards.append(self.getRewards(self.state, actions[i], next_state))
             self.state = np.copy(next_state)
             self._step += 1
-            if self._isDone():
-                break
 
         next_states = np.concatenate(next_states, axis=0)
         rewards = np.concatenate(rewards, axis=0)
@@ -306,7 +308,7 @@ class VREPPushTaskMultiStepRewardEnvironment(VREPPushTaskEnvironment):
     def __init__(self, port=19997, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None):
         super().__init__(port, init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos)
 
-    def getRewards(state, action):
+    def getRewards(self, state, action, next_state):
         gripper_cube_dist = np.sqrt(np.sum(np.square(state[-6:-3])))
         if gripper_cube_dist >= 0.1 + VREPPushTaskEnvironment.GRIPPER_BASE_TO_CLOSED_TIP_DIST + (VREPPushTaskEnvironment.CUBOID_SIDE_LENGTH * np.sqrt(2) / 2):
             return -gripper_cube_dist
@@ -323,7 +325,7 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
     observation_space = Box((28,), (-999.0,), (999.0,))
 
     def __init__(self, port=19997, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
-                mico_model_path="models/robots/non-mobile/MicoRobotNonIK.ttm"):
+                mico_model_path="models/robots/non-mobile/MicoRobot7DoF.ttm"):
         super().__init__(port, init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos, mico_model_path)
         self._gripper_closing = True
         self._gripper_closing_vel = -0.04
@@ -338,13 +340,14 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
                 vrep.simx_opmode_discontinue)
         _, _ = vrep.simxGetJointPosition(self.client_ID, self.gripper_f2_handle, vrep.simx_opmode_discontinue)
 
-    def getRewards(state, action):
+    def getRewards(self, state, action, next_state):
         """
             Return the sum of the Euclidean distance between gripper and cuboid and the Euclidean distance between cuboid and targetPlane.
             Args
             -------
             state:   array(state_dim)/array(batch_size, state_dim)
             action:  array(action_dim)/array(batch_size, action_dim)
+            next_state:   array(state_dim)/array(batch_size, state_dim)
 
             Returns
             -------
@@ -355,7 +358,8 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
         state = state.reshape(-1, VREPPushTask7DoFEnvironment.observation_space.shape[0])
         batch_size = state.shape[0]
         action = action.reshape(batch_size, -1)
-        return VREPPushTaskEnvironment.getRewards(state[:, :24], action[:, :6])
+        next_state = next_state.reshape(batch_size, -1)
+        return super().getRewards(state[:, :24], action[:, :6], next_state[:, :24])
 
     def getStateString(self, state):
         """
@@ -480,6 +484,8 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
         next_states = []
         rewards = []
         for i in range(actions.shape[0]):
+            if self._isDone():
+                break
             current_vel = self.state[:6] + actions[i, :6]
             vrep.simxPauseCommunication(self.client_ID, 1)
             for j in range(6):
@@ -503,11 +509,9 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
             next_state = self.getCurrentState(self.client_ID, self.joint_handles, self.gripper_handle, self.cuboid_handle,
                     self.target_plane_handle)
             next_states.append(next_state.reshape(1, -1))
-            rewards.append(VREPPushTask7DoFEnvironment.getRewards(self.state, actions))
+            rewards.append(self.getRewards(self.state, actions, next_state))
             self.state = np.copy(next_state)
             self._step += 1
-            if self._isDone():
-                break
 
         next_states = np.concatenate(next_states, axis=0)
         rewards = np.concatenate(rewards, axis=0)
@@ -619,6 +623,8 @@ class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
                         vrep.simx_opmode_blocking)
             else:
                 # Real step
+                if self._isDone():
+                    break
                 # Update gripper_tt pos and orients to current GRIPPER (NOT Gripper TT) pos and orient (for tt reset)
                 #print("step0")
                 _, self._gripper_tt_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1,
@@ -637,13 +643,11 @@ class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
                 #print("step13")
                 next_states.append(next_state.reshape(1, -1))
                 # NOTE: actions is not relevant in calculating rewards
-                rewards.append(VREPPushTask7DoFEnvironment.getRewards(self.state, actions[:, :7]))
+                rewards.append(self.getRewards(self.state, actions[:, :7], next_state))
                 #print("step14")
                 self.state = np.copy(next_state)
                 #print("step2")
                 self._step += 1
-                if self._isDone():
-                    break
 
         if len(next_states) > 0:
             next_states = np.concatenate(next_states, axis=0)
@@ -654,6 +658,55 @@ class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
         else:
             next_states = None
         return next_states, rewards, self._isDone(), None
+
+
+class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
+    MAX_STEP = 200
+
+    def __init__(self, port=19997, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
+                mico_model_path="models/robots/non-mobile/MicoRobot7DoF.ttm"):
+        super().__init__(port, init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos, mico_model_path)
+
+
+    def getRewards(self, state, action, next_state):
+        """
+        Sparse Rewards. Big reward at the end of the episode.
+        Args
+        -------
+        state:   array(state_dim)/array(batch_size, state_dim)
+        action:  array(action_dim)/array(batch_size, action_dim)
+
+        Returns
+        -------
+        reward:  array(batch_size, 1)
+
+        NOTE: Rewards should be non-negative
+        NOTE: The reward is calculated in terms of the next_state instead of current state.
+        """
+        state = state.reshape(-1, VREPPushTask7DoFEnvironment.observation_space.shape[0])
+        batch_size = state.shape[0]
+        action = action.reshape(batch_size, -1)
+        next_state = next_state.reshape(batch_size, -1)
+        cube_to_target_dist = np.sqrt(np.sum(np.square(next_state[:, 21:24])))
+        #if cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1:
+        if cube_to_target_dist <= 0:
+            print("GOT IT")
+            reward = 100
+        else:
+            reward = -0.5
+        return np.array(reward).reshape((-1, 1))
+
+    def _isDone(self):
+        state = self.state.reshape(1, -1)
+        assert(state.shape[1] == self.observation_space.shape[0])
+        cube_to_target_dist = np.sqrt(np.sum(np.square(state[:, 21:24])))
+        print("HAHA")
+        print(cube_to_target_dist)
+        print(self.MAX_STEP)
+        print(self.CUBOID_SIDE_LENGTH / 2 + 0.1)
+        #return cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1 or self._step >= self.MAX_STEP
+        return cube_to_target_dist <= 0 or self._step >= self.MAX_STEP
+
 
 
 def make(env_name, *args, **kwargs):
@@ -691,8 +744,10 @@ def make(env_name, *args, **kwargs):
                 **kwargs,
                 mico_model_path="models/robots/non-mobile/MicoRobot7DoFIK.ttm")
     elif env_name == "VREPPushTask7DoFSparseRewards":
-        #TODO:
-        return
+        return VREPPushTask7DoFSparseRewardsEnvironment(
+                *args,
+                **kwargs,
+                )
     elif env_name == "VREPPushTask7DoFSparseRewardsIK":
         #TODO:
         return

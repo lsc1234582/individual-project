@@ -19,6 +19,7 @@ ENVS = {
         "VREPPushTaskMultiStepRewardContact2": VREPEnvironments.make,
         "VREPPushTask7DoF": VREPEnvironments.make,
         "VREPPushTask7DoFIK": VREPEnvironments.make,
+        "VREPPushTask7DoFSparseRewards": VREPEnvironments.make,
         }
 
 def MakeEnvironment(env_name, *args, **kwargs):
