@@ -266,13 +266,17 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         assert alpha >= 0
         self._alpha = alpha
 
-        self._it_capacity = 1
-        while self._it_capacity < size:
-            self._it_capacity *= 2
+        self._calculateCapacity(size)
 
         self._it_sum = SumSegmentTree(self._it_capacity)
         self._it_min = MinSegmentTree(self._it_capacity)
         self._max_priority = 1.0
+
+    def _calculateCapacity(self, size):
+        self._it_capacity = 1
+        while self._it_capacity < size:
+            self._it_capacity *= 2
+
 
     def __eq__(self, other):
         return super().__eq__(other) and (self._it_sum == other._it_sum and self._it_min == other._it_min\
@@ -289,12 +293,17 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     def _do_load(self, f):
         states = super(PrioritizedReplayBuffer, self)._do_load(f)
 
+        self._calculateCapacity(self._maxsize)
         if "_alpha" in states:
             self._alpha = states["_alpha"]
         if "_it_sum" in states:
             self._it_sum = states["_it_sum"]
+        else:
+            self._it_sum = SumSegmentTree(self._it_capacity)
         if "_it_min" in states:
             self._it_min = states["_it_min"]
+        else:
+            self._it_min = MinSegmentTree(self._it_capacity)
         if "_max_priority" in states:
             self._max_priority = states["_max_priority"]
         if "_it_capacity" in states:
