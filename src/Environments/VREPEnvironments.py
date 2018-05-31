@@ -276,8 +276,6 @@ class VREPPushTaskEnvironment(VREPEnvironment):
         next_states = []
         rewards = []
         for i in range(actions.shape[0]):
-            if self._isDone():
-                break
             current_vel = self.state[:6] + actions[i, :]
             vrep.simxPauseCommunication(self.client_ID, 1)
             for j in range(6):
@@ -295,8 +293,10 @@ class VREPPushTaskEnvironment(VREPEnvironment):
                     self.target_plane_handle)
             next_states.append(next_state.reshape(1, -1))
             rewards.append(self.getRewards(self.state, actions[i], next_state))
-            self.state = np.copy(next_state)
             self._step += 1
+            if self._isDone():
+                break
+            self.state = np.copy(next_state)
 
         next_states = np.concatenate(next_states, axis=0)
         rewards = np.concatenate(rewards, axis=0)
@@ -466,16 +466,16 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
 
     def step(self, actions):
         """
-        Execute sequences of actions (None, action_dim) in the environment
+        Execute sequences of actions (None, 7) in the environment
         Return sequences of subsequent states and rewards
 
         Args
         -------
-        actions:  array(-1, action_dim)
+        actions:  array(-1, 7)
 
         Returns
         -------
-        next_states:   array(-1, state_dim)
+        next_states:   array(-1, 28)
         rewards:    array(-1, 1)
         done:   Boolean
         info:   None
@@ -483,8 +483,6 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
         next_states = []
         rewards = []
         for i in range(actions.shape[0]):
-            if self._isDone():
-                break
             current_vel = self.state[:6] + actions[i, :6]
             vrep.simxPauseCommunication(self.client_ID, 1)
             for j in range(6):
@@ -509,8 +507,10 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
                     self.target_plane_handle)
             next_states.append(next_state.reshape(1, -1))
             rewards.append(self.getRewards(self.state, actions, next_state))
-            self.state = np.copy(next_state)
             self._step += 1
+            if self._isDone():
+                break
+            self.state = np.copy(next_state)
 
         next_states = np.concatenate(next_states, axis=0)
         rewards = np.concatenate(rewards, axis=0)
@@ -621,8 +621,6 @@ class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
                         vrep.simx_opmode_blocking)
             else:
                 # Real step
-                if self._isDone():
-                    break
                 # Update gripper_tt pos and orients to current GRIPPER (NOT Gripper TT) pos and orient (for tt reset)
                 #print("step0")
                 _, self._gripper_tt_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1,
@@ -643,9 +641,11 @@ class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
                 # NOTE: actions is not relevant in calculating rewards
                 rewards.append(self.getRewards(self.state, actions[:, :7], next_state))
                 #print("step14")
-                self.state = np.copy(next_state)
                 #print("step2")
                 self._step += 1
+                if self._isDone():
+                    break
+                self.state = np.copy(next_state)
 
         if len(next_states) > 0:
             next_states = np.concatenate(next_states, axis=0)
@@ -988,8 +988,6 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
         next_states = []
         rewards = []
         for i in range(actions.shape[0]):
-            if self._isDone():
-                break
             current_vel = self.state[:6] + actions[i, :6]
             vrep.simxPauseCommunication(self.client_ID, 1)
             for j in range(6):
@@ -1013,8 +1011,10 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
             next_state = self.getCurrentState()
             next_states.append(next_state.reshape(1, -1))
             rewards.append(self.getRewards(self.state, actions, next_state))
-            self.state = np.copy(next_state)
             self._step += 1
+            if self._isDone():
+                break
+            self.state = np.copy(next_state)
 
         next_states = np.concatenate(next_states, axis=0)
         rewards = np.concatenate(rewards, axis=0)
@@ -1162,8 +1162,6 @@ class VREPGraspTask7DoFSparseRewardsIKEnvironment(VREPGraspTask7DoFSparseRewards
                         vrep.simx_opmode_blocking)
             else:
                 # Real step
-                if self._isDone():
-                    break
                 # Update gripper_tt pos and orients to current GRIPPER (NOT Gripper TT) pos and orient (for tt reset)
                 #print("step0")
                 _, self._gripper_tt_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1,
@@ -1183,9 +1181,11 @@ class VREPGraspTask7DoFSparseRewardsIKEnvironment(VREPGraspTask7DoFSparseRewards
                 # NOTE: actions is not relevant in calculating rewards
                 rewards.append(self.getRewards(self.state, actions[:, :7], next_state))
                 #print("step14")
-                self.state = np.copy(next_state)
                 #print("step2")
                 self._step += 1
+                if self._isDone():
+                    break
+                self.state = np.copy(next_state)
 
         if len(next_states) > 0:
             next_states = np.concatenate(next_states, axis=0)
