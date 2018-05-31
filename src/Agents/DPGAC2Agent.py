@@ -307,14 +307,14 @@ class AgentBase(object):
                 self.saveReplayBuffer(self._replay_buffer_save_dir)
 
             # Check for convergence
-            if self._last_average and average <= self._last_average:
-                self._num_non_imp_eps += 1
-            else:
-                self._num_non_imp_eps = 0
-            if self._num_non_imp_eps >= self._max_num_non_imp_eps:
-                logger.info("Agent is not improving; stop training")
-                self._stop_training = True
-            self._last_average = average
+            #if self._last_average and average <= self._last_average:
+            #    self._num_non_imp_eps += 1
+            #else:
+            #    self._num_non_imp_eps = 0
+            #if self._num_non_imp_eps >= self._max_num_non_imp_eps:
+            #    logger.info("Agent is not improving; stop training")
+            #    self._stop_training = True
+            #self._last_average = average
 
             # Reset for new episode
             self._episode_return = 0.0
@@ -627,14 +627,14 @@ class DPGAC2WithDemoAgent(AgentBase):
                 self.saveReplayBuffer(self._replay_buffer_save_dir)
 
             # Check for convergence
-            if self._last_average and average <= self._last_average:
-                self._num_non_imp_eps += 1
-            else:
-                self._num_non_imp_eps = 0
-            if self._num_non_imp_eps >= self._max_num_non_imp_eps:
-                logger.info("Agent not improving; stop training")
-                self._stop_training = True
-            self._last_average = average
+            #if self._last_average and average <= self._last_average:
+            #    self._num_non_imp_eps += 1
+            #else:
+            #    self._num_non_imp_eps = 0
+            #if self._num_non_imp_eps >= self._max_num_non_imp_eps:
+            #    logger.info("Agent not improving; stop training")
+            #    self._stop_training = True
+            #self._last_average = average
 
             # Reset for new episode
             self._episode_return = 0.0
@@ -916,14 +916,14 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
                 self.saveReplayBuffer(self._replay_buffer_save_dir)
 
             # Check for convergence
-            if self._last_average and average <= self._last_average:
-                self._num_non_imp_eps += 1
-            else:
-                self._num_non_imp_eps = 0
-            if self._num_non_imp_eps >= self._max_num_non_imp_eps:
-                logger.info("Agent not improving; stop training")
-                self._stop_training = True
-            self._last_average = average
+            #if self._last_average and average <= self._last_average:
+            #    self._num_non_imp_eps += 1
+            #else:
+            #    self._num_non_imp_eps = 0
+            #if self._num_non_imp_eps >= self._max_num_non_imp_eps:
+            #    logger.info("Agent not improving; stop training")
+            #    self._stop_training = True
+            #self._last_average = average
 
             # Reset for new episode
             self._episode_return = 0.0
