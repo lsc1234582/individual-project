@@ -284,6 +284,10 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_min = MinSegmentTree(self._it_capacity)
         self._max_priority = 1.0
 
+        # Store the size of loaded content, in order to separate from loaded episodes (potentially demo data) and live
+        # episodes.
+        self._loaded_storage_size = 0
+
     def _calculateCapacity(self, size):
         self._it_capacity = 1
         while self._it_capacity < size:
@@ -321,7 +325,12 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         if "_it_capacity" in states:
             self._it_capacity = states["_it_capacity"]
 
+        self._loaded_storage_size = len(self._storage)
+
         return states
+
+    def get_loaded_storage_size(self):
+        return self._loaded_storage_size
 
     def add(self, *args, **kwargs):
         """See ReplayBuffer.store_effect

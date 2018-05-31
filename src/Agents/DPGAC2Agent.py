@@ -1052,10 +1052,13 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             # Calculate and update new priorities for sampled transitions
             #TODO: Remove hardcoded value
             lambda3 = 0.1
-            epislon = 1e-3
+            epislon = 1e-2
+            demo_bonuses = np.zeros_like(td_error)
+            demo_bonuses[np.array(indexes) < self._replay_buffer.get_loaded_storage_size(), :] = 1.0
             #print("HAHA")
+            #print(demo_bonuses)
             #print(td_error.shape[0] - nb_ns_td_target)
-            priorities = np.square(td_error) + lambda3 * np.square(np.linalg.norm(grads)) + epislon
+            priorities = np.square(td_error) + lambda3 * np.square(np.linalg.norm(grads)) + epislon + demo_bonuses
             #print("TDERROR!!!")
             #print(self._replay_buffer._it_sum.sum())
             #print(self._replay_buffer._it_min.min())
