@@ -86,7 +86,7 @@ class PrioritizedReplayBufferTest(unittest.TestCase):
         data_col2 = np.arange(100, 250)
         data_col3 = np.arange(100, 200)
 
-        s0, a0, r0, s1, d, _, _ = rb.sample_episode(1.0)
+        s0, a0, r0, s1, d, _, _, _ = rb.sample_episode(1.0)
 
         self.assertTrue(np.all(s0==data_col1) or np.all(s0==data_col2))
         self.assertTrue(np.all(a0==data_col1) or np.all(s0==data_col2))
@@ -102,7 +102,7 @@ class PrioritizedReplayBufferTest(unittest.TestCase):
             rb.add(i, i, i, i, False)
         rb.add(199, 199, 199, 199, True)
 
-        s0, a0, r0, s1, d, _, _ = rb.sample_episode(1.0)
+        s0, a0, r0, s1, d, _, _, _ = rb.sample_episode(1.0)
 
         self.assertTrue(np.all(s0==data_col1) or np.all(s0==data_col3))
         self.assertTrue(np.all(a0==data_col1) or np.all(s0==data_col3))
