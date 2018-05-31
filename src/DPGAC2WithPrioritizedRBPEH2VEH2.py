@@ -31,7 +31,7 @@ def MakeDPGAC2WithPrioritizedRBPEH2VEH2(session, env, args):
 
     # TODO: remove hardcoded value
     normalize_states = True
-    normalize_returns = False
+    normalize_returns = True
     state_range = [-999, 999]
     return_range = [-999, 999]
     # State normalization.
