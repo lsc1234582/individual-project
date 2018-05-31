@@ -659,7 +659,6 @@ class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
 
 
 class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
-    MAX_STEP = 200
 
     def __init__(self, port=19997, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
                 mico_model_path="models/robots/non-mobile/MicoRobot7DoF.ttm"):
@@ -687,9 +686,9 @@ class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
         next_state = next_state.reshape(batch_size, -1)
         cube_to_target_dist = np.sqrt(np.sum(np.square(next_state[:, 21:24])))
         if cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1:
-            reward = 100
+            reward = 1.0
         else:
-            reward = -0.5
+            reward = -0.01
         return np.array(reward).reshape((-1, 1))
 
     def _isDone(self):
@@ -1043,9 +1042,9 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
         tg_spot_l_dist = np.sqrt(np.sum(np.square(next_state[:, 21:24])))
         tg_spot_r_dist = np.sqrt(np.sum(np.square(next_state[:, 24:27])))
         if tg_spot_bot_dist + tg_spot_l_dist + tg_spot_r_dist <= 0.1:
-            reward = 300
+            reward = 1
         else:
-            reward = -0.5
+            reward = -0.01
         return np.array(reward).reshape((-1, 1))
 
     def _isDone(self):
