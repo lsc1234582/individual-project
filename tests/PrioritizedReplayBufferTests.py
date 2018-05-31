@@ -195,7 +195,7 @@ class PrioritizedReplayBufferTest(unittest.TestCase):
         sample_freq_sum = sum(sample_freq)
         sample_freq = list(map((lambda i: i/sample_freq_sum),sample_freq))
         sample_priorities = rb.debug_get_priorities()
-        prob_sum = sum(probs)
+        prob_sum = sum(sample_priorities)
         probs = list(map((lambda i : i / prob_sum), sample_priorities))
         #print("hahahaha")
         #print(sample_freq)
