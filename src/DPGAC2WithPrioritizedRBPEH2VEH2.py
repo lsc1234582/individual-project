@@ -88,7 +88,7 @@ def MakeDPGAC2WithPrioritizedRBPEH2VEH2(session, env, args):
             return_rms=return_rms
             )
 
-    summary_writer = SummaryWriter(session, args.summary_dir) if not args.stop_agent_learning else None
+    summary_writer = SummaryWriter(session, args.summary_dir) if args.log_stats_freq > 0 else None
 
     estimator_saver_recent = tf.train.Saver(max_to_keep=args.max_estimators_to_keep)
     estimator_saver_best = tf.train.Saver(max_to_keep=1)

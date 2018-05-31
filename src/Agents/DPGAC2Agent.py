@@ -287,9 +287,6 @@ class AgentBase(object):
                 self._num_episodes,
                 self._episode_return, average, improve_str))
 
-            # Log stats
-            if is_learning and episode_num % self._log_stats_freq == 0:
-                self._logStats(episode_num)
 
             # Checkpoint
             if is_learning:
@@ -322,6 +319,10 @@ class AgentBase(object):
             self._last_state = None
             self._last_action = None
             self.reset()
+
+        # Log stats
+        if self._log_stats_freq > 0 and self._stats_tot_steps % self._log_stats_freq == 0:
+            self._logStats(self._stats_tot_steps)
 
         if self._stats_tot_steps % self._train_freq == 0:
             # Train step

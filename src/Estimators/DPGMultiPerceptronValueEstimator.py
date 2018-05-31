@@ -45,6 +45,7 @@ class DPGMultiPerceptronValueEstimator(object):
         self._target_inputs, self._target_action, self._target_out = self._create_critic_network(scope + "_target")
 
         # Denormalized target out
+        # NOTE: target out might have a different distribution than out. Effects?
         self._denorm_target_out = denormalize(tf.clip_by_value(self._target_out, self._return_range[0],
                     self._return_range[1]), self._return_rms)
 

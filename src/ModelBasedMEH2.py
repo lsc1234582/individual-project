@@ -28,7 +28,7 @@ def MakeModelBasedMEH2(session, env, args):
 
     # TODO: remove hardcoded value
     normalize_states = True
-    normalize_returns = False
+    normalize_returns = True
     state_range = [-999, 999]
     return_range = [-999, 999]
     # State normalization.
@@ -64,7 +64,7 @@ def MakeModelBasedMEH2(session, env, args):
             learning_rate=args.me_learning_rate
             )
 
-    summary_writer = SummaryWriter(session, args.summary_dir) if not args.stop_agent_learning else None
+    summary_writer = SummaryWriter(session, args.summary_dir) if args.log_stats_freq > 0 else None
 
     estimator_saver_recent = tf.train.Saver(max_to_keep=args.max_estimators_to_keep)
     estimator_saver_best = tf.train.Saver(max_to_keep=1)

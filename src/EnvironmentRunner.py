@@ -86,7 +86,7 @@ def getArgParser():
     parser.add_argument("--env-name", help="choose the env[VREPPushTask, Pendulum-v0]", required=True)
     parser.add_argument("--env-vrep-port", help="Port number to run vrep remote server", type=int, default=19997)
     parser.add_argument("--estimator-dir", help="directory for loading/storing estimators", required=True)
-    parser.add_argument("--summary-dir", help="directory for storing tensorboard info", required=True)
+    parser.add_argument("--summary-dir", help="directory for storing stats (tensorboard info)", required=True)
     #parser.add_argument("--agent-name", help="name of the agent")
     parser.add_argument("--stop-agent-learning", help="Is Agent learning", action="store_true")
     parser.add_argument("--num-episodes", help="max num of episodes to do while training", type=int, default=500)
@@ -103,12 +103,13 @@ def getArgParser():
     parser.add_argument("--replay-buffer-save-dir", help="directory for storing replay buffer")
     parser.add_argument("--replay-buffer-save-freq", help="replay buffer save frequency (per number of episodes", type=int,
             default=500)
-    parser.add_argument("--log-stats-freq", help="Stats log frequency (per number of episodes)", type=int,
-            default=1)
-    parser.add_argument("--num-updates", help="number of estimator updates per training step", type=int, default=1)
-    parser.add_argument("--train-freq", help="Training frequency (per number of rollout steps)", type=int,
-            default=1)
+    parser.add_argument("--log-stats-freq", help="Stats log(tensorboard info) frequency (per number of\
+                        steps/transitions).\ Zero to turn off stats log", type=int, default=100)
     parser.add_argument("--eval-replay-buffer-load-dir", help="directory for loading evaluation replay buffer")
+
+    # Agent parameters
+    parser.add_argument("--num-updates", help="number of estimator updates per training step", type=int, default=1)
+    parser.add_argument("--train-freq", help="Training frequency (per number of rollout steps)", type=int, default=1)
 
     parser.set_defaults(stop_agent_learning=False)
     parser.set_defaults(render_env=False)
