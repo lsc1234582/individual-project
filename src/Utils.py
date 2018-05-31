@@ -113,6 +113,8 @@ class ReplayBuffer(object):
             self._next_idx = states["_count"]
         self._is_bkup = states["_is_bkup"]
         self._stats_estimate_sample_size = states["_stats_estimate_sample_size"]
+        if self._debug:
+            self._debug_freq = [0 for _ in self._storage]
 
         return states
 
