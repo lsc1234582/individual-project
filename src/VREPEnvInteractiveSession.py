@@ -3,6 +3,7 @@ from Environments.VREPEnvironments import VREPPushTask7DoFIKEnvironment
 from Environments.VREPEnvironments import VREPPushTaskEnvironment
 from Environments.VREPEnvironments import VREPPushTask7DoFEnvironment
 from Environments.VREPEnvironments import VREPPushTask7DoFSparseRewardsIKEnvironment
+from Environments.VREPEnvironments import VREPGraspTask7DoFSparseRewardsIKEnvironment
 import numpy as np
 import tkinter as tk
 from Utils import ReplayBuffer
@@ -257,7 +258,8 @@ if __name__ == "__main__":
     if args.replay_buffer_load_dir is not None:
         replay_buffer.load(args.replay_buffer_load_dir)
 
-    with VREPPushTask7DoFSparseRewardsIKEnvironment(mico_model_path="models/robots/non-mobile/MicoRobot7DoFIK.ttm") as env:
+    #with VREPPushTask7DoFSparseRewardsIKEnvironment(mico_model_path="models/robots/non-mobile/MicoRobot7DoFIK.ttm") as env:
+    with VREPGraspTask7DoFSparseRewardsIKEnvironment(mico_model_path="models/robots/non-mobile/MicoRobot7DoFIK.ttm") as env:
         #env.reset()
         root = tk.Tk()
         app = Application(master=root, env=env, replay_buffer=replay_buffer, args=args)

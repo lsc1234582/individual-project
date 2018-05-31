@@ -15,6 +15,8 @@ class Box(object):
 
 class VREPEnvironment(object):
     SIMULATION_DT = 0.05
+    MAX_JOINT_VELOCITY_DELTA = 1.0
+    MAX_JOINT_VELOCITY = 6.0
 
     def __init__(self, port=19997):
         logger.info("Creating {}".format(self.__class__.__name__))
@@ -55,8 +57,6 @@ class VREPPushTaskEnvironment(VREPEnvironment):
     Distance unit: m
     Maximum distance between target and cuboid: 2m; this will affect the reward function for VREPPushTaskMultiStepRewardEnvironment
     """
-    MAX_JOINT_VELOCITY_DELTA = 1.0
-    MAX_JOINT_VELOCITY = 6.0
     CUBOID_SIDE_LENGTH = 0.1
     GRIPPER_BASE_TO_CLOSED_TIP_DIST = 0.15
     DEFAULT_JOINT_POSITIONS = [np.pi, 1.5 * np.pi, 1.5 * np.pi, np.pi, np.pi, np.pi]
@@ -327,7 +327,6 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
     def __init__(self, port=19997, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None,
                 mico_model_path="models/robots/non-mobile/MicoRobot7DoF.ttm"):
         super().__init__(port, init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos, mico_model_path)
-        self._gripper_closing = True
         self._gripper_closing_vel = -0.04
 
     def _tearDownDatastream(self):
@@ -523,7 +522,6 @@ class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
     Maximum distance between target and cuboid: 2m; this will affect the reward function for VREPPushTaskMultiStepRewardEnvironment
     """
     # Reset time in seconds
-    RESET_TIME = 1.2
     action_space = Box((11,), (-999.0,), (999.0,))
     #observation_space = Box((28,), (-999.0,), (999.0,))
 
@@ -688,8 +686,7 @@ class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
         action = action.reshape(batch_size, -1)
         next_state = next_state.reshape(batch_size, -1)
         cube_to_target_dist = np.sqrt(np.sum(np.square(next_state[:, 21:24])))
-        #if cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1:
-        if cube_to_target_dist <= 0:
+        if cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1:
             reward = 100
         else:
             reward = -0.5
@@ -699,14 +696,506 @@ class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
         state = self.state.reshape(1, -1)
         assert(state.shape[1] == self.observation_space.shape[0])
         cube_to_target_dist = np.sqrt(np.sum(np.square(state[:, 21:24])))
-        #return cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1 or self._step >= self.MAX_STEP
-        return cube_to_target_dist <= 0 or self._step >= self.MAX_STEP
+        return cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1 or self._step >= self.MAX_STEP
 
 
-class VREPPushTask7DoFSparseRewardsIKEnvironment (VREPPushTask7DoFSparseRewardsEnvironment,
+class VREPPushTask7DoFSparseRewardsIKEnvironment(VREPPushTask7DoFSparseRewardsEnvironment,
         VREPPushTask7DoFIKEnvironment):
     pass
 
+
+class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
+    DEFAULT_CUP_POSITION = [0.0, 0.5, 0.062]
+    DEFAULT_CUP_ORIENTATION = [0., 0., 0.]
+    DEFAULT_TARGET_CUP_POSITION = [0.0, 0.5, 0.5]
+    DEFAULT_TARGET_CUP_ORIENTATION = [0., -np.pi/2., 0.]
+    MAX_STEP = 600
+    action_space = Box((7,), (-1.0,), (1.0,))
+    observation_space = Box((40,), (-999.0,), (999.0,))
+
+    def __init__(self, port=19997, init_cup_pos=None, init_cup_orient=None, init_tg_cup_pos=None,
+            init_tg_cup_orient=None,
+                mico_model_path="models/robots/non-mobile/MicoRobot7DoF.ttm"):
+        super().__init__(port)
+        self._init_cup_pos = init_cup_pos if not init_cup_pos is None else\
+                                VREPGraspTask7DoFSparseRewardsEnvironment.DEFAULT_CUP_POSITION
+        self._init_cup_orient = init_cup_orient if not init_cup_orient is None else\
+                                VREPGraspTask7DoFSparseRewardsEnvironment.DEFAULT_CUP_ORIENTATION
+        self._init_tg_cup_pos = init_tg_cup_pos if not init_tg_cup_pos is None else\
+                                VREPGraspTask7DoFSparseRewardsEnvironment.DEFAULT_TARGET_CUP_POSITION
+        self._init_tg_cup_orient = init_tg_cup_orient if not init_tg_cup_orient is None else\
+                                VREPGraspTask7DoFSparseRewardsEnvironment.DEFAULT_TARGET_CUP_ORIENTATION
+        self.mico_model_path = mico_model_path
+        self._gripper_closing_vel = -0.04
+
+    def _tearDownDatastream(self):
+        # tear down datastreams
+        for i in range(6):
+            _, _ = vrep.simxGetObjectFloatParameter(self.client_ID, self.joint_handles[i], 2012, vrep.simx_opmode_discontinue)
+            _, _ = vrep.simxGetJointPosition(self.client_ID, self.joint_handles[i],
+                    vrep.simx_opmode_discontinue)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_discontinue)
+        _, _ = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_discontinue)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.spot_bot_handle, -1, vrep.simx_opmode_discontinue)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.spot_r_handle, -1, vrep.simx_opmode_discontinue)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.spot_l_handle, -1, vrep.simx_opmode_discontinue)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_bot_handle, -1, vrep.simx_opmode_discontinue)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_r_handle, -1, vrep.simx_opmode_discontinue)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_l_handle, -1, vrep.simx_opmode_discontinue)
+        _, _ = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f1_handle, 2012,
+                vrep.simx_opmode_discontinue)
+        _, _ = vrep.simxGetJointPosition(self.client_ID, self.gripper_f1_handle, vrep.simx_opmode_discontinue)
+        _, _ = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f2_handle, 2012,
+                vrep.simx_opmode_discontinue)
+        _, _ = vrep.simxGetJointPosition(self.client_ID, self.gripper_f2_handle, vrep.simx_opmode_discontinue)
+
+    def getStateString(self, state):
+        """
+        Return a formatted string representation of the state
+
+        Args
+        -------
+        state:              array(state_dim)/array(1, state_dim)
+
+        Returns
+        -------
+        state_str:          String      Formatted string
+        """
+        state = state.flatten()
+        assert(state.shape[0] == VREPGraspTask7DoFSparseRewardsEnvironment.observation_space.shape[0])
+        state_str = "joint_vel: {}\njoint_angles: {}\ngripper_pos: {}\ngripper_orient: {}\n"
+        state_str += "spot_bot_gripper_vec: {}\nspot_l_gripper_vec: {}\nspot_r_gripper_vec: {}\n"
+        state_str += "tg_spot_bot_spot_bot_vec: {}\ntg_spot_l_spot_l_vec: {}\ntg_spot_r_spot_r_vec: {}\n"
+        state_str += "gripper_joint_vel: {}\ngripper_joint_angles: {}\n"
+        return state_str.format(state[:6], state[6:12], state[12:15], state[15:18],
+                state[18:21], state[21:24], state[24:27],
+                state[27:30], state[30:33], state[33:36],
+                state[36:38], state[38:40])
+
+    def getCurrentState(self):
+        """
+            TODO: Refactor away arguments
+            Return the state as an array of shape (40, )
+        """
+        #print("PARENT 1")
+        current_vel = np.array([0, 0, 0, 0, 0, 0], dtype='float')
+        joint_angles = np.array([0, 0, 0, 0, 0, 0], dtype='float')
+        # obtain first state
+        for i in range(6):
+            ret, current_vel[i] = vrep.simxGetObjectFloatParameter(self.client_ID, self.joint_handles[i], 2012,
+                    vrep.simx_opmode_buffer)
+            while ret != vrep.simx_return_ok:
+                ret, current_vel[i] = vrep.simxGetObjectFloatParameter(self.client_ID, self.joint_handles[i], 2012,
+                        vrep.simx_opmode_buffer)
+            ret, joint_angles[i] = vrep.simxGetJointPosition(self.client_ID, self.joint_handles[i], vrep.simx_opmode_buffer)
+            while ret != vrep.simx_return_ok:
+                ret, joint_angles[i] = vrep.simxGetJointPosition(self.client_ID, self.joint_handles[i], vrep.simx_opmode_buffer)
+        #print("PARENT 2")
+        ret, gripper_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, gripper_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_buffer)
+        #print("PARENT 3")
+        ret, gripper_orient = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, gripper_orient = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_buffer)
+        gripper_pos = np.array(gripper_pos)
+        gripper_orient = np.array(gripper_orient)
+
+        # spots to gripper vec
+        #print("PARENT 4")
+        ret, spot_bot_pos = vrep.simxGetObjectPosition(self.client_ID, self.spot_bot_handle, -1, vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, spot_bot_pos = vrep.simxGetObjectPosition(self.client_ID, self.spot_bot_handle, -1, vrep.simx_opmode_buffer)
+        spot_bot_pos = np.array(spot_bot_pos)
+
+        ret, spot_l_pos = vrep.simxGetObjectPosition(self.client_ID, self.spot_l_handle, -1, vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, spot_l_pos = vrep.simxGetObjectPosition(self.client_ID, self.spot_l_handle, -1, vrep.simx_opmode_buffer)
+        spot_l_pos = np.array(spot_l_pos)
+
+        ret, spot_r_pos = vrep.simxGetObjectPosition(self.client_ID, self.spot_r_handle, -1, vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, spot_r_pos = vrep.simxGetObjectPosition(self.client_ID, self.spot_r_handle, -1, vrep.simx_opmode_buffer)
+        spot_r_pos = np.array(spot_r_pos)
+
+        spot_bot_gripper_vec = spot_bot_pos - gripper_pos
+        spot_l_gripper_vec = spot_l_pos - gripper_pos
+        spot_r_gripper_vec = spot_r_pos - gripper_pos
+
+        # target spots to spots vec
+        #print("PARENT 5")
+        ret, tg_spot_bot_pos = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_bot_handle, -1, vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, tg_spot_bot_pos = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_bot_handle, -1, vrep.simx_opmode_buffer)
+        tg_spot_bot_pos = np.array(tg_spot_bot_pos)
+
+        ret, tg_spot_l_pos = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_l_handle, -1, vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, tg_spot_l_pos = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_l_handle, -1, vrep.simx_opmode_buffer)
+        tg_spot_l_pos = np.array(tg_spot_l_pos)
+
+        ret, tg_spot_r_pos = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_r_handle, -1, vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, tg_spot_r_pos = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_r_handle, -1, vrep.simx_opmode_buffer)
+        tg_spot_r_pos = np.array(tg_spot_r_pos)
+
+        #print("PARENT 6")
+        tg_spot_bot_vec = tg_spot_bot_pos - spot_bot_pos
+        tg_spot_l_vec = tg_spot_l_pos - spot_l_pos
+        tg_spot_r_vec = tg_spot_r_pos - spot_r_pos
+
+        # Gripper f1 and f2 vels and pos
+        gripper_joint_vel = np.array([0.0, 0.0], dtype='float')
+        gripper_joint_angles = np.array([0.0, 0.0], dtype='float')
+
+        #print("GET CURRENT STATE3")
+        ret, gripper_joint_vel[0] = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f1_handle, 2012,
+                vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, gripper_joint_vel[0] = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f1_handle, 2012,
+                    vrep.simx_opmode_buffer)
+        #print("GET CURRENT STATE4")
+        ret, gripper_joint_vel[1] = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f2_handle, 2012,
+                vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, gripper_joint_vel[1] = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f2_handle, 2012,
+                    vrep.simx_opmode_buffer)
+        #print("GET CURRENT STATE5")
+        ret, gripper_joint_angles[0] = vrep.simxGetJointPosition(self.client_ID, self.gripper_f1_handle, vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, gripper_joint_angles[0] = vrep.simxGetJointPosition(self.client_ID, self.gripper_f1_handle, vrep.simx_opmode_buffer)
+        #print("GET CURRENT STATE6")
+        ret, gripper_joint_angles[1] = vrep.simxGetJointPosition(self.client_ID, self.gripper_f2_handle, vrep.simx_opmode_buffer)
+        while ret != vrep.simx_return_ok:
+            ret, gripper_joint_angles[1] = vrep.simxGetJointPosition(self.client_ID, self.gripper_f2_handle, vrep.simx_opmode_buffer)
+
+        return np.concatenate([current_vel, joint_angles, gripper_pos, gripper_orient,
+            spot_bot_gripper_vec, spot_l_gripper_vec, spot_r_gripper_vec,
+            tg_spot_bot_vec, tg_spot_l_vec, tg_spot_r_vec,
+            gripper_joint_vel, gripper_joint_angles])
+
+    def _loadModelsAndAssignHandles(self):
+        # get handles
+        # cup
+        _, self.cup_handle = vrep.simxGetObjectHandle(self.client_ID, 'Cup', vrep.simx_opmode_blocking)
+        # cup spots
+        _, self.spot_bot_handle = vrep.simxGetObjectHandle(self.client_ID, 'SpotBot', vrep.simx_opmode_blocking)
+        _, self.spot_l_handle = vrep.simxGetObjectHandle(self.client_ID, 'SpotL', vrep.simx_opmode_blocking)
+        _, self.spot_r_handle = vrep.simxGetObjectHandle(self.client_ID, 'SpotR', vrep.simx_opmode_blocking)
+
+        # target cup
+        _, self.tg_cup_handle = vrep.simxGetObjectHandle(self.client_ID, 'CupTarget', vrep.simx_opmode_blocking)
+        # target cup spots
+        _, self.tg_spot_bot_handle = vrep.simxGetObjectHandle(self.client_ID, 'SpotBotTarget', vrep.simx_opmode_blocking)
+        _, self.tg_spot_l_handle = vrep.simxGetObjectHandle(self.client_ID, 'SpotLTarget', vrep.simx_opmode_blocking)
+        _, self.tg_spot_r_handle = vrep.simxGetObjectHandle(self.client_ID, 'SpotRTarget', vrep.simx_opmode_blocking)
+
+        _, self.model_base_handle = vrep.simxLoadModel(self.client_ID, self.mico_model_path, 0, vrep.simx_opmode_blocking)
+        self.joint_handles = [-1, -1, -1, -1, -1, -1]
+        for i in range(6):
+            _, self.joint_handles[i] = vrep.simxGetObjectHandle(self.client_ID, 'Mico_joint' + str(i+1), vrep.simx_opmode_blocking)
+        _, self.gripper_handle = vrep.simxGetObjectHandle(self.client_ID, 'MicoHand', vrep.simx_opmode_blocking)
+
+        # gripper
+        _, self.gripper_f1_handle = vrep.simxGetObjectHandle(self.client_ID, 'MicoHand_fingers12_motor1', vrep.simx_opmode_blocking)
+        _, self.gripper_f2_handle = vrep.simxGetObjectHandle(self.client_ID, 'MicoHand_fingers12_motor2', vrep.simx_opmode_blocking)
+
+
+    def _initialiseScene(self):
+        """
+        Initialise the environment
+        """
+        # initialise cup orientation, cup position, target cup orientation and target cup position
+        vrep.simxPauseCommunication(self.client_ID, 1)
+        ret = vrep.simxSetObjectOrientation(self.client_ID, self.cup_handle, -1, self._init_cup_orient, vrep.simx_opmode_oneshot)
+        ret = vrep.simxSetObjectPosition(self.client_ID, self.cup_handle, -1, self._init_cup_pos, vrep.simx_opmode_oneshot)
+        ret = vrep.simxSetObjectOrientation(self.client_ID, self.tg_cup_handle, -1, self._init_tg_cup_orient, vrep.simx_opmode_oneshot)
+        ret = vrep.simxSetObjectPosition(self.client_ID, self.tg_cup_handle, -1, self._init_tg_cup_pos, vrep.simx_opmode_oneshot)
+        vrep.simxPauseCommunication(self.client_ID, 0)
+
+    def _setupDatastream(self):
+        # set up datastreams
+        current_vel = np.array([0, 0, 0, 0, 0, 0], dtype='float')
+        joint_angles = np.array([0, 0, 0, 0, 0, 0], dtype='float')
+
+        # set up datastreams
+        for i in range(6):
+            _, current_vel[i] = vrep.simxGetObjectFloatParameter(self.client_ID, self.joint_handles[i], 2012,
+                    vrep.simx_opmode_streaming)
+            _, joint_angles[i] = vrep.simxGetJointPosition(self.client_ID, self.joint_handles[i], vrep.simx_opmode_streaming)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_streaming)
+        _, _ = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_streaming)
+
+        # Spots
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.spot_bot_handle, -1, vrep.simx_opmode_streaming)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.spot_l_handle, -1, vrep.simx_opmode_streaming)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.spot_r_handle, -1, vrep.simx_opmode_streaming)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_bot_handle, -1, vrep.simx_opmode_streaming)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_l_handle, -1, vrep.simx_opmode_streaming)
+        _, _ = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_r_handle, -1, vrep.simx_opmode_streaming)
+
+        # Gripper joints
+        _, _ = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f1_handle, 2012, vrep.simx_opmode_streaming)
+        _, _ = vrep.simxGetJointPosition(self.client_ID, self.gripper_f1_handle, vrep.simx_opmode_streaming)
+        _, _ = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f2_handle, 2012, vrep.simx_opmode_streaming)
+        _, _ = vrep.simxGetJointPosition(self.client_ID, self.gripper_f2_handle, vrep.simx_opmode_streaming)
+
+        del current_vel, joint_angles
+
+    def reset(self):
+        """
+        Reset the environment
+        Return initial state and assign the internal initial state
+        """
+
+        if self._reset_yet:
+            self._tearDownDatastream()
+            # remove Mico
+            vrep.simxRemoveModel(self.client_ID, self.model_base_handle, vrep.simx_opmode_blocking)
+        else:
+            self._reset_yet = True
+
+        self._loadModelsAndAssignHandles()
+        self._initialiseScene()
+        self._setupDatastream()
+        # obtain the first state before the first time step
+        # this extra synchronisation is necessary for reset
+        vrep.simxSynchronousTrigger(self.client_ID)
+        vrep.simxGetPingTime(self.client_ID)
+        current_state = self.getCurrentState()
+
+        self.state = current_state
+        self._step = 0
+
+        return current_state
+
+    def step(self, actions):
+        """
+        Execute sequences of actions (None, 7) in the environment
+        Return sequences of subsequent states and rewards
+
+        Args
+        -------
+        actions:  array(-1, 7)
+
+        Returns
+        -------
+        next_states:   array(-1, 40)
+        rewards:    array(-1, 1)
+        done:   Boolean
+        info:   None
+        """
+        next_states = []
+        rewards = []
+        for i in range(actions.shape[0]):
+            if self._isDone():
+                break
+            current_vel = self.state[:6] + actions[i, :6]
+            vrep.simxPauseCommunication(self.client_ID, 1)
+            for j in range(6):
+                # Cap at max velocity
+                vel = max(-VREPPushTaskEnvironment.MAX_JOINT_VELOCITY, min(VREPPushTaskEnvironment.MAX_JOINT_VELOCITY,
+                    current_vel[j]))
+                vrep.simxSetJointTargetVelocity(self.client_ID, self.joint_handles[j], vel,
+                        vrep.simx_opmode_oneshot)
+            # -1 == open, 1 == close
+            gripper_vel = (actions[i, 6]/np.abs(actions[i, 6])) * self._gripper_closing_vel
+
+            vrep.simxSetJointTargetVelocity(self.client_ID, self.gripper_f1_handle, gripper_vel,
+                    vrep.simx_opmode_oneshot)
+            vrep.simxSetJointTargetVelocity(self.client_ID, self.gripper_f2_handle, gripper_vel,
+                    vrep.simx_opmode_oneshot)
+            vrep.simxPauseCommunication(self.client_ID, 0)
+            vrep.simxSynchronousTrigger(self.client_ID)
+            # make sure all commands are exeucted
+            vrep.simxGetPingTime(self.client_ID)
+            # obtain next state
+            next_state = self.getCurrentState()
+            next_states.append(next_state.reshape(1, -1))
+            rewards.append(self.getRewards(self.state, actions, next_state))
+            self.state = np.copy(next_state)
+            self._step += 1
+
+        next_states = np.concatenate(next_states, axis=0)
+        rewards = np.concatenate(rewards, axis=0)
+        return next_states, rewards, self._isDone(), None
+
+    def getRewards(self, state, action, next_state):
+        """
+        Sparse Rewards. Big reward at the end of the episode.
+        Args
+        -------
+        state:   array(state_dim)/array(batch_size, state_dim)
+        action:  array(action_dim)/array(batch_size, action_dim)
+
+        Returns
+        -------
+        reward:  array(batch_size, 1)
+
+        NOTE: Rewards should be non-negative
+        NOTE: The reward is calculated in terms of the next_state instead of current state.
+        """
+        state = state.reshape(-1, VREPGraspTask7DoFSparseRewardsEnvironment.observation_space.shape[0])
+        batch_size = state.shape[0]
+        action = action.reshape(batch_size, -1)
+        next_state = next_state.reshape(batch_size, -1)
+        tg_spot_bot_dist = np.sqrt(np.sum(np.square(next_state[:, 18:21])))
+        tg_spot_l_dist = np.sqrt(np.sum(np.square(next_state[:, 21:24])))
+        tg_spot_r_dist = np.sqrt(np.sum(np.square(next_state[:, 24:27])))
+        if tg_spot_bot_dist + tg_spot_l_dist + tg_spot_r_dist <= 0.1:
+            reward = 300
+        else:
+            reward = -0.5
+        return np.array(reward).reshape((-1, 1))
+
+    def _isDone(self):
+        state = self.state.reshape(1, -1)
+        assert(state.shape[1] == self.observation_space.shape[0])
+        tg_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 18:21])))
+        tg_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 21:24])))
+        tg_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 24:27])))
+        return tg_spot_bot_dist + tg_spot_l_dist + tg_spot_r_dist <= 0.1 or self._step >= self.MAX_STEP
+
+class VREPGraspTask7DoFSparseRewardsIKEnvironment(VREPGraspTask7DoFSparseRewardsEnvironment):
+    """
+    Distance unit: m
+    Maximum distance between target and cuboid: 2m; this will affect the reward function for VREPPushTaskMultiStepRewardEnvironment
+    """
+    # Reset time in seconds
+    action_space = Box((11,), (-999.0,), (999.0,))
+    #observation_space = Box((28,), (-999.0,), (999.0,))
+
+    def __init__(self, port=19997, init_cup_pos=None, init_cup_orient=None, init_tg_cup_pos=None,
+            init_tg_cup_orient=None,
+                mico_model_path="models/robots/non-mobile/MicoRobotIK.ttm"):
+        super().__init__(port, init_cup_pos, init_cup_orient, init_tg_cup_pos, init_tg_cup_orient, mico_model_path)
+
+    def _loadModelsAndAssignHandles(self):
+        # get handles
+        super()._loadModelsAndAssignHandles()
+        _, self.gripper_tt_handle = vrep.simxGetObjectHandle(self.client_ID, 'MicoHand_Tip_Target_Sphere',
+                vrep.simx_opmode_blocking)
+
+    def _initialiseScene(self):
+        """
+            Initiailise gripper tip target to be at the same pos and orient as the gripper
+
+        """
+        #print(11)
+        super()._initialiseScene()
+        #print(12)
+        vrep.simxGetPingTime(self.client_ID)
+        _, self._gripper_tt_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1,
+                vrep.simx_opmode_blocking)
+        _, self._gripper_tt_orient = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1,
+                vrep.simx_opmode_blocking)
+        #print(13)
+        vrep.simxPauseCommunication(self.client_ID, 1)
+        ret = vrep.simxSetObjectPosition(self.client_ID, self.gripper_tt_handle, -1, self._gripper_tt_pos, vrep.simx_opmode_oneshot)
+        ret = vrep.simxSetObjectOrientation(self.client_ID, self.gripper_tt_handle, -1, self._gripper_tt_orient, vrep.simx_opmode_oneshot)
+        vrep.simxPauseCommunication(self.client_ID, 0)
+        #print(14)
+
+    def step(self, actions):
+        """
+        Execute sequences of actions (None, action_dim) in the environment
+        Return sequences of subsequent states and rewards
+
+        Args
+        -------
+        actions:  array(-1, action_dim)
+                  [tip_tgt_x, tip_tgt_y, tip_tgt_z, tip_tgt_rot_x, tip_tgt_rot_y, tip_tgt_rot_z,
+                  tip_tgt_rot_use_world_frame, tip_tgt_rot_fixed, gripper_close, step_action, reset_tip_tgt]
+
+        Returns
+        -------
+        next_states:   array(-1, state_dim)
+        rewards:    array(-1, 1)
+        done:   Boolean
+        info:   None
+        """
+        next_states = []
+        rewards = []
+        for i in range(actions.shape[0]):
+            # if not step action
+            if actions[i, 9] < 0:
+                # Actuate gripper tip target
+                # if reset_tip_tgt
+                if actions[i, 10] > 0:
+                    vrep.simxSetObjectPosition(self.client_ID, self.gripper_tt_handle, -1, self._gripper_tt_pos,
+                                vrep.simx_opmode_blocking)
+                    vrep.simxSetObjectOrientation(self.client_ID, self.gripper_tt_handle, -1, self._gripper_tt_orient,
+                            vrep.simx_opmode_blocking)
+                else:
+                    # Algin gripper tip target orientation with gripper orientation if necessary
+                    _, gripper_orient = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1,
+                            vrep.simx_opmode_buffer)
+                    _, gripper_tt_orient = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_tt_handle, -1, vrep.simx_opmode_blocking)
+                    dist = np.sqrt(np.sum(np.square(np.array(gripper_orient) - np.array(gripper_tt_orient))))
+                    # if not tip_tgt_rot_fixed
+                    if actions[i, 7] < 0 and dist > 0.3:
+                        vrep.simxSetObjectOrientation(self.client_ID, self.gripper_tt_handle, -1, gripper_orient,
+                                vrep.simx_opmode_blocking)
+                    # Apply action
+                    # Actuate tip target position
+                    # if tip_tgt_rot_use_world_frame
+                    if actions[i, 6] > 0:
+                        _, gripper_tt_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_tt_handle, -1,
+                                vrep.simx_opmode_blocking)
+                        newPos = np.array(gripper_tt_pos) + actions[i, :3]
+                        vrep.simxSetObjectPosition(self.client_ID, self.gripper_tt_handle, -1, list(newPos),
+                                vrep.simx_opmode_blocking)
+                    else:
+                        vrep.simxSetObjectPosition(self.client_ID, self.gripper_tt_handle, self.gripper_tt_handle,
+                                list(actions[i, :3]), vrep.simx_opmode_blocking)
+                    # Actuate tip target orientation
+                    vrep.simxSetObjectOrientation(self.client_ID, self.gripper_tt_handle, self.gripper_tt_handle,
+                            list(actions[i, 3:6]), vrep.simx_opmode_blocking)
+
+                # Actuate gripper
+                # -1 == open, 1 == close
+                gripper_vel = (actions[i, 8]/np.abs(actions[i, 8])) * self._gripper_closing_vel
+
+                vrep.simxSetJointTargetVelocity(self.client_ID, self.gripper_f1_handle, gripper_vel,
+                        vrep.simx_opmode_blocking)
+                vrep.simxSetJointTargetVelocity(self.client_ID, self.gripper_f2_handle, gripper_vel,
+                        vrep.simx_opmode_blocking)
+            else:
+                # Real step
+                if self._isDone():
+                    break
+                # Update gripper_tt pos and orients to current GRIPPER (NOT Gripper TT) pos and orient (for tt reset)
+                #print("step0")
+                _, self._gripper_tt_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1,
+                        vrep.simx_opmode_buffer)
+                _, self._gripper_tt_orient = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1,
+                        vrep.simx_opmode_buffer)
+                #print("step1")
+                vrep.simxSynchronousTrigger(self.client_ID)
+                #print("step11")
+                # make sure all commands are exeucted
+                vrep.simxGetPingTime(self.client_ID)
+                # obtain next state
+                #print("step12")
+                next_state = self.getCurrentState()
+                #print("step13")
+                next_states.append(next_state.reshape(1, -1))
+                # NOTE: actions is not relevant in calculating rewards
+                rewards.append(self.getRewards(self.state, actions[:, :7], next_state))
+                #print("step14")
+                self.state = np.copy(next_state)
+                #print("step2")
+                self._step += 1
+
+        if len(next_states) > 0:
+            next_states = np.concatenate(next_states, axis=0)
+        else:
+            next_states = None
+        if len(rewards) > 0:
+            rewards = np.concatenate(rewards, axis=0)
+        else:
+            next_states = None
+        return next_states, rewards, self._isDone(), None
 
 def make(env_name, *args, **kwargs):
     if env_name == "VREPPushTask":
@@ -754,11 +1243,15 @@ def make(env_name, *args, **kwargs):
                 mico_model_path="models/robots/non-mobile/MicoRobot7DoFIK.ttm",
                 )
     elif env_name == "VREPGraspTask7DoFSparseRewards":
-        #TODO:
-        return
+        return VREPGraspTask7DoFSparseRewardsEnvironment(
+                *args,
+                **kwargs,
+                )
     elif env_name == "VREPGraspTask7DoFSparseRewardsIK":
-        #TODO:
-        return
+        return VREPGraspTask7DoFSparseRewardsIKEnvironment(
+                *args,
+                **kwargs,
+                )
     elif env_name == "VREPPushTaskContact":
         return VREPPushTaskEnvironment(
                 *args,

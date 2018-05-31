@@ -21,6 +21,8 @@ ENVS = {
         "VREPPushTask7DoFIK": VREPEnvironments.make,
         "VREPPushTask7DoFSparseRewards": VREPEnvironments.make,
         "VREPPushTask7DoFSparseRewardsIKEnvironment": VREPEnvironments.make,
+        "VREPGraspTask7DoFSparseRewards": VREPEnvironments.make,
+        "VREPGraspTask7DoFSparseRewardsIK": VREPEnvironments.make,
         }
 
 def MakeEnvironment(env_name, *args, **kwargs):
