@@ -48,19 +48,23 @@ def runEnvironmentWithAgent(args):
         episode_start = session.run(global_episode_num) + 1
         logger.info("Continueing at episode {}".format(episode_start))
         # Run the environment feedback loop
-        for episode_num in range(episode_start, episode_start + args.num_episodes):
+        train_episode_num = episode_start
+        while train_episode_num < episode_start + args.num_episodes:
             observation = env.reset()
             reward = np.array([0.0])
             done = False
-            action, done = agent.act(observation, reward, done, episode_start, episode_num, global_episode_num,
+            action, done, is_test_episode = agent.act(observation, reward, done, episode_start, train_episode_num, global_episode_num,
                     is_learning=(not args.stop_agent_learning))
 
             while not done:
                 if args.render_env:
                     env.render()
                 observation, reward, done, _ = env.step(action)
-                action, done = agent.act(observation, reward, done, episode_start, episode_num, global_episode_num,
+                action, done, is_test_episode = agent.act(observation, reward, done, episode_start, train_episode_num, global_episode_num,
                                          is_learning=(not args.stop_agent_learning))
+
+            if not is_test_episode:
+                train_episode_num += 1
                 #logger.debug("Observation")
                 #logger.debug(observation)
                 #logger.debug("Action")
@@ -108,8 +112,10 @@ def getArgParser():
     parser.add_argument("--eval-replay-buffer-load-dir", help="directory for loading evaluation replay buffer")
 
     # Agent parameters
-    parser.add_argument("--num-updates", help="number of estimator updates per training step", type=int, default=1)
+    parser.add_argument("--num-updates", help="Number of estimator updates per training step", type=int, default=1)
     parser.add_argument("--train-freq", help="Training frequency (per number of rollout steps)", type=int, default=1)
+    parser.add_argument("--num-test-eps", help="Number of test episodes", type=int, default=20)
+    parser.add_argument("--test-freq", help="Testing frequency (per number of training episodes)", type=int, default=50)
 
     parser.set_defaults(stop_agent_learning=False)
     parser.set_defaults(render_env=False)

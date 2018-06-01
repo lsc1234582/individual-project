@@ -15,12 +15,13 @@ np.set_printoptions(threshold=np.nan, linewidth=200)
 logger = getModuleLogger(__name__)
 
 class AgentBase(object):
-    def __init__(self, sess, replay_buffer,
+    def __init__(self, sess, env, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1, train_freq=1, eval_replay_buffer=None):
+            log_stats_freq=1, train_freq=1, eval_replay_buffer=None, test_freq=50, num_test_eps=20):
         self._sess = sess
+        self._env = env
         self._discount_factor = discount_factor
         self._num_episodes = num_episodes
         self._max_episode_length = max_episode_length
@@ -79,6 +80,16 @@ class AgentBase(object):
         # Training frequency in number of rollout steps
         self._train_freq = train_freq
 
+        # Test for success rate
+        # Test frequency, in number of episodes
+        self._is_test_episode = False
+        self._test_freq = test_freq
+        self._num_test_eps = num_test_eps
+        self._num_success_test_eps = 0
+        self._last_success_rate = 0.0
+        self._test_eps_counter = 0
+
+
     def _sampleBatch(self, rb, batch_size, **kwargs):
         return rb.sample_batch(batch_size=batch_size)
 
@@ -116,6 +127,8 @@ class AgentBase(object):
         # TODO: Again, full action vector instead of reduced value?
         stats['epoch/actions_mean'] = np.mean(self._stats_epoch_actions)
         stats['epoch/actions_std'] = np.std(self._stats_epoch_actions)
+        if self._test_freq > 0:
+            stats["test/success_rate"] = self._last_success_rate
         # Clear epoch statistics.
         self._stats_epoch_episode_returns = []
         self._stats_epoch_episode_steps = []
@@ -214,7 +227,7 @@ class AgentBase(object):
         last_reward:        array(1)/array(-1, 1)
         termination:        Boolean
         episode_start_num:  Int
-        episode_num:        Int
+        episode_num:        Int                                     The training episode number
         episode_num_var:    tf.Variable
         is_learning:        Boolean
 
@@ -232,23 +245,24 @@ class AgentBase(object):
             if is_learning:
                 best_action += self._actor_noise()
             self._last_action = best_action
-            self._recordLogAfterBestAction(state=self._last_state, best_action=best_action)
-            return best_action, termination
+            if not self._is_test_episode:
+                self._recordLogAfterBestAction(state=self._last_state, best_action=best_action)
+            return best_action, termination, self._is_test_episode
 
         # Book keeping
         self._episode_return += last_reward.squeeze()
         self._step += 1
-        self._stats_tot_steps += 1
         # Set a limit on how long each episode is, despite what the environment responds.
         if self._step >= self._max_episode_length:
             termination = True
-
-        # Store the last step
-        self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(),
+        if not self._is_test_episode:
+            self._stats_tot_steps += 1
+            # Store the last step
+            self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(),
                 last_reward.squeeze(),
                 current_state.squeeze().copy(), termination)
-        self._normalizationUpdateAfterRB(current_state=current_state)
-
+            # TODO: Should normalize for test episodes as well?
+            self._normalizationUpdateAfterRB(current_state=current_state)
 
         if not termination:
             self._last_state = current_state.copy()
@@ -256,62 +270,79 @@ class AgentBase(object):
             # Add exploration noise when training
             if is_learning:
                 best_action += self._actor_noise()
-            self._recordLogAfterBestAction(state=self._last_state, best_action=best_action)
+            if not self._is_test_episode:
+                self._recordLogAfterBestAction(state=self._last_state, best_action=best_action)
 
             self._last_action = best_action
         else:
-            episode_num_this_run = episode_num - episode_start_num + 1
-            # Record cumulative reward of trial
-            self._episode_returns.append(self._episode_return)
-            self._stats_epoch_episode_returns.append(self._episode_return)
-            self._stats_epoch_episode_steps.append(self._step)
-            average = np.mean(self._episode_returns[-self._num_rewards_to_average:])
+            if self._is_test_episode:
+                self._test_eps_counter += 1
+                if self._env._reachedGoalState(current_state):
+                    self._num_success_test_eps += 1
 
-            # Update episode number variable
-            self._sess.run(tf.assign(episode_num_var, episode_num))
-
-            # Check for improvements
-            if len(self._episode_returns) >= self._num_rewards_to_average and\
-                (self._best_average_episode_return is None or self._best_average_episode_return < average):
-                self._best_average_episode_return = average
-                improve_str = '*'
+                if self._test_eps_counter >= self._num_test_eps:
+                    self._last_success_rate = float(self._num_success_test_eps) / float(self._num_test_eps)
+                    logger.info("Success rate: {}/{}.".format(self._num_success_test_eps, self._num_test_eps))
+                    self._num_success_test_eps = 0
+                    self._test_eps_counter = 0
+                    self._is_test_episode = False
             else:
-                improve_str = ''
+                episode_num_this_run = episode_num - episode_start_num + 1
+                # Record cumulative reward of trial
+                self._episode_returns.append(self._episode_return)
+                self._stats_epoch_episode_returns.append(self._episode_return)
+                self._stats_epoch_episode_steps.append(self._step)
+                average = np.mean(self._episode_returns[-self._num_rewards_to_average:])
 
-            # Log the episode summary
-            log_string = "Episode {0:>5}/{1:>5} ({2:>5}/{3:>5} in this run), " +\
-                         "R {4:>9.3f}, Ave R {5:>9.3f} {6}"
+                # Update episode number variable
+                self._sess.run(tf.assign(episode_num_var, episode_num))
 
-            logger.info(log_string.format(episode_num, self._num_episodes + episode_start_num - 1,
-                episode_num_this_run,
-                self._num_episodes,
-                self._episode_return, average, improve_str))
+                # Check for improvements
+                if len(self._episode_returns) >= self._num_rewards_to_average and\
+                    (self._best_average_episode_return is None or self._best_average_episode_return < average):
+                    self._best_average_episode_return = average
+                    improve_str = '*'
+                else:
+                    improve_str = ''
+
+                # Log the episode summary
+                log_string = "Episode {0:>5}/{1:>5} ({2:>5}/{3:>5} in this run), " +\
+                             "R {4:>9.3f}, Ave R {5:>9.3f} {6}"
+
+                logger.info(log_string.format(episode_num, self._num_episodes + episode_start_num - 1,
+                    episode_num_this_run,
+                    self._num_episodes,
+                    self._episode_return, average, improve_str))
 
 
-            # Checkpoint
-            if is_learning:
-                if improve_str == '*':
-                    logger.info("Saving best agent so far")
-                    self.save(self._estimator_save_dir, is_best=True, step=episode_num, write_meta_graph=False)
-                if (episode_num_this_run % self._recent_save_freq == 0 or episode_num_this_run >= self._num_episodes):
-                    logger.info("Saving agent checkpoints")
-                    self.save(self._estimator_save_dir, step=episode_num, write_meta_graph=False)
+                # Checkpoint
+                if is_learning:
+                    if improve_str == '*':
+                        logger.info("Saving best agent so far")
+                        self.save(self._estimator_save_dir, is_best=True, step=episode_num, write_meta_graph=False)
+                    if (episode_num_this_run % self._recent_save_freq == 0 or episode_num_this_run >= self._num_episodes):
+                        logger.info("Saving agent checkpoints")
+                        self.save(self._estimator_save_dir, step=episode_num, write_meta_graph=False)
 
-            # Save replay buffer
-            if (not self._replay_buffer_save_dir is None) and \
-                (episode_num_this_run % self._replay_buffer_save_freq == 0 or episode_num_this_run >= self._num_episodes):
-                logger.info("Saving replay buffer")
-                self.saveReplayBuffer(self._replay_buffer_save_dir)
+                # Save replay buffer
+                if (not self._replay_buffer_save_dir is None) and \
+                    (episode_num_this_run % self._replay_buffer_save_freq == 0 or episode_num_this_run >= self._num_episodes):
+                    logger.info("Saving replay buffer")
+                    self.saveReplayBuffer(self._replay_buffer_save_dir)
 
-            # Check for convergence
-            #if self._last_average and average <= self._last_average:
-            #    self._num_non_imp_eps += 1
-            #else:
-            #    self._num_non_imp_eps = 0
-            #if self._num_non_imp_eps >= self._max_num_non_imp_eps:
-            #    logger.info("Agent is not improving; stop training")
-            #    self._stop_training = True
-            #self._last_average = average
+                # Check for convergence
+                #if self._last_average and average <= self._last_average:
+                #    self._num_non_imp_eps += 1
+                #else:
+                #    self._num_non_imp_eps = 0
+                #if self._num_non_imp_eps >= self._max_num_non_imp_eps:
+                #    logger.info("Agent is not improving; stop training")
+                #    self._stop_training = True
+                #self._last_average = average
+                # Check if should switch to testing
+                if self._test_freq > 0 and episode_num_this_run % self._test_freq == 0:
+                    logger.info("Start testing.")
+                    self._is_test_episode = True
 
             # Reset for new episode
             self._episode_return = 0.0
@@ -320,11 +351,12 @@ class AgentBase(object):
             self._last_action = None
             self.reset()
 
+
         # Log stats
-        if self._log_stats_freq > 0 and self._stats_tot_steps % self._log_stats_freq == 0:
+        if (not self._is_test_episode) and self._log_stats_freq > 0 and self._stats_tot_steps % self._log_stats_freq == 0:
             self._logStats(self._stats_tot_steps)
 
-        if self._stats_tot_steps % self._train_freq == 0:
+        if (not self._is_test_episode) and self._stats_tot_steps % self._train_freq == 0:
             # Train step
             if is_learning and self._replay_buffer.size() >= self._minibatch_size and not self._stop_training:
                 self._train()
@@ -334,21 +366,21 @@ class AgentBase(object):
                 self._evaluate()
 
         if not termination:
-            return best_action, termination
+            return best_action, termination, self._is_test_episode
         else:
-            return None, termination
+            return None, termination, self._is_test_episode
 
 class DPGAC2Agent(AgentBase):
-    def __init__(self, sess, policy_estimator, value_estimator, replay_buffer,
+    def __init__(self, sess, env, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1, train_freq=1, eval_replay_buffer=None):
-        super().__init__(sess, replay_buffer,
+            log_stats_freq=1, train_freq=1, eval_replay_buffer=None, test_freq=50, num_test_eps=20):
+        super().__init__(sess, env, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
-            log_stats_freq, train_freq, eval_replay_buffer)
+            log_stats_freq, train_freq, eval_replay_buffer, test_freq, num_test_eps)
 
         self._policy_estimator = policy_estimator
         self._value_estimator = value_estimator
@@ -983,16 +1015,16 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
 
 
 class DPGAC2WithPrioritizedRB(DPGAC2Agent):
-    def __init__(self, sess, policy_estimator, value_estimator, replay_buffer,
+    def __init__(self, sess, env, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1, train_freq=1, eval_replay_buffer=None):
-         super().__init__(sess, policy_estimator, value_estimator, replay_buffer,
+            log_stats_freq=1, train_freq=1, eval_replay_buffer=None, test_freq=50, num_test_eps=20):
+         super().__init__(sess, env, policy_estimator, value_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
-            log_stats_freq, train_freq, eval_replay_buffer)
+            log_stats_freq, train_freq, eval_replay_buffer, test_freq, num_test_eps)
          # Beta used in prioritized rb for importance sampling
          # TODO: Remove hardcoded value
          self._replay_buffer_beta = 1.0
@@ -1101,16 +1133,16 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             self._value_estimator.update_target_network()
 
 class ModelBasedAgent(AgentBase):
-    def __init__(self, sess, model_estimator, replay_buffer,
+    def __init__(self, sess, env, model_estimator, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, state_change_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1, train_freq=1, eval_replay_buffer=None):
-        super().__init__(sess, replay_buffer,
+            log_stats_freq=1, train_freq=1, eval_replay_buffer=None, test_freq=50, num_test_eps=20):
+        super().__init__(sess, env, replay_buffer,
             discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
-            log_stats_freq, train_freq, eval_replay_buffer)
+            log_stats_freq, train_freq, eval_replay_buffer, test_freq, num_test_eps)
 
         self._model_estimator = model_estimator
 
@@ -1165,9 +1197,6 @@ class ModelBasedAgent(AgentBase):
         """
         assert self._num_random_action != 0
         assert self._model_plan_horizon != 0
-        # TODO: Remove explicit reward from explicit environment
-        from Environments.VREPEnvironments import VREPPushTaskEnvironment
-        from Environments.VREPEnvironments import VREPPushTask7DoFEnvironment
         state = state.reshape(-1, self._model_estimator._state_dim)
         batch_size = state.shape[0]
 
@@ -1182,9 +1211,10 @@ class ModelBasedAgent(AgentBase):
                 action = generateRandomAction(1.0, 7 * batch_size).reshape(batch_size, -1)
                 if j == 0:
                     first_action = action
-                horizon_reward += VREPPushTask7DoFEnvironment.getRewards(current_state, action)
                 # Proceed to next state
-                current_state += self._model_estimator.predict(current_state, action)
+                next_state = current_state + self._model_estimator.predict(current_state, action)
+                horizon_reward += self._env.getRewards(current_state, action, next_state)
+                current_state = np.copy(next_state)
             if best_action is None:
                 best_action = first_action
                 max_horizon_reward = horizon_reward

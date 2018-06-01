@@ -96,6 +96,7 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
 
     return DPGAC2Agent(
                 sess=session,
+                env=env,
                 policy_estimator=policy_estimator,
                 value_estimator=value_estimator,
                 discount_factor=args.discount_factor,
@@ -118,6 +119,8 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
                 num_updates=args.num_updates,
                 log_stats_freq=args.log_stats_freq,
                 train_freq=args.train_freq,
+                num_test_eps=args.num_test_eps,
+                test_freq=args.test_freq,
                 )
 
 def getArgParser():

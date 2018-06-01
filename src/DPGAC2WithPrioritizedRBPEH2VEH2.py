@@ -31,7 +31,7 @@ def MakeDPGAC2WithPrioritizedRBPEH2VEH2(session, env, args):
 
     # TODO: remove hardcoded value
     normalize_states = True
-    normalize_returns = True
+    normalize_returns = False
     state_range = [-999, 999]
     return_range = [-999, 999]
     # State normalization.
@@ -102,6 +102,7 @@ def MakeDPGAC2WithPrioritizedRBPEH2VEH2(session, env, args):
 
     return DPGAC2WithPrioritizedRB(
                 sess=session,
+                env=env,
                 policy_estimator=policy_estimator,
                 value_estimator=value_estimator,
                 replay_buffer=replay_buffer,
@@ -124,6 +125,8 @@ def MakeDPGAC2WithPrioritizedRBPEH2VEH2(session, env, args):
                 num_updates=args.num_updates,
                 log_stats_freq=args.log_stats_freq,
                 train_freq=args.train_freq,
+                num_test_eps=args.num_test_eps,
+                test_freq=args.test_freq,
                 )
 
 def getArgParser():

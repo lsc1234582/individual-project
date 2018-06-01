@@ -251,6 +251,13 @@ class VREPPushTaskEnvironment(VREPEnvironment):
         #return -(np.sqrt(np.sum(np.square(action))))
         #return np.tanh(-(np.sqrt(np.sum(np.square(state[:1]))))/10.0) + 1.0
 
+    def _reachedGoalState(self, state):
+        """
+        If state has reached goal state
+        """
+        cube_to_target_dist = np.sqrt(np.sum(np.square(state[:, 21:24])))
+        return cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1
+
     def _isDone(self):
         """
         Criteria for termination
@@ -294,9 +301,9 @@ class VREPPushTaskEnvironment(VREPEnvironment):
             next_states.append(next_state.reshape(1, -1))
             rewards.append(self.getRewards(self.state, actions[i], next_state))
             self._step += 1
+            self.state = np.copy(next_state)
             if self._isDone():
                 break
-            self.state = np.copy(next_state)
 
         next_states = np.concatenate(next_states, axis=0)
         rewards = np.concatenate(rewards, axis=0)
@@ -508,9 +515,9 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
             next_states.append(next_state.reshape(1, -1))
             rewards.append(self.getRewards(self.state, actions, next_state))
             self._step += 1
+            self.state = np.copy(next_state)
             if self._isDone():
                 break
-            self.state = np.copy(next_state)
 
         next_states = np.concatenate(next_states, axis=0)
         rewards = np.concatenate(rewards, axis=0)
@@ -643,9 +650,9 @@ class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
                 #print("step14")
                 #print("step2")
                 self._step += 1
+                self.state = np.copy(next_state)
                 if self._isDone():
                     break
-                self.state = np.copy(next_state)
 
         if len(next_states) > 0:
             next_states = np.concatenate(next_states, axis=0)
@@ -694,8 +701,7 @@ class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
     def _isDone(self):
         state = self.state.reshape(1, -1)
         assert(state.shape[1] == self.observation_space.shape[0])
-        cube_to_target_dist = np.sqrt(np.sum(np.square(state[:, 21:24])))
-        return cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1 or self._step >= self.MAX_STEP
+        return self._reachedGoalState(state) or self._step >= self.MAX_STEP
 
 
 class VREPPushTask7DoFSparseRewardsIKEnvironment(VREPPushTask7DoFSparseRewardsEnvironment,
@@ -1011,9 +1017,9 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
             next_states.append(next_state.reshape(1, -1))
             rewards.append(self.getRewards(self.state, actions, next_state))
             self._step += 1
+            self.state = np.copy(next_state)
             if self._isDone():
                 break
-            self.state = np.copy(next_state)
 
         next_states = np.concatenate(next_states, axis=0)
         rewards = np.concatenate(rewards, axis=0)
@@ -1047,13 +1053,19 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
             reward = -0.01
         return np.array(reward).reshape((-1, 1))
 
-    def _isDone(self):
-        state = self.state.reshape(1, -1)
-        assert(state.shape[1] == self.observation_space.shape[0])
+    def _reachedGoalState(self, state):
+        """
+        If state has reached goal state
+        """
         tg_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 18:21])))
         tg_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 21:24])))
         tg_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 24:27])))
-        return tg_spot_bot_dist + tg_spot_l_dist + tg_spot_r_dist <= 0.1 or self._step >= self.MAX_STEP
+        return tg_spot_bot_dist + tg_spot_l_dist + tg_spot_r_dist <= 0.1
+
+    def _isDone(self):
+        state = self.state.reshape(1, -1)
+        assert(state.shape[1] == self.observation_space.shape[0])
+        return  self._reachedGoalState(state) or self._step >= self.MAX_STEP
 
 class VREPGraspTask7DoFSparseRewardsIKEnvironment(VREPGraspTask7DoFSparseRewardsEnvironment):
     """
@@ -1182,9 +1194,9 @@ class VREPGraspTask7DoFSparseRewardsIKEnvironment(VREPGraspTask7DoFSparseRewards
                 #print("step14")
                 #print("step2")
                 self._step += 1
+                self.state = np.copy(next_state)
                 if self._isDone():
                     break
-                self.state = np.copy(next_state)
 
         if len(next_states) > 0:
             next_states = np.concatenate(next_states, axis=0)

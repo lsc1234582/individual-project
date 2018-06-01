@@ -79,6 +79,7 @@ def MakeModelBasedMEH2(session, env, args):
 
     return ModelBasedAgent(
                 sess=session,
+                env=env,
                 model_estimator=model_estimator,
                 replay_buffer=replay_buffer,
                 discount_factor=args.discount_factor,
@@ -102,6 +103,8 @@ def MakeModelBasedMEH2(session, env, args):
                 log_stats_freq=args.log_stats_freq,
                 train_freq=args.train_freq,
                 eval_replay_buffer=eval_replay_buffer,
+                num_test_eps=args.num_test_eps,
+                test_freq=args.test_freq,
                 )
 
 def getArgParser():
