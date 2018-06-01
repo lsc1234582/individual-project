@@ -27,19 +27,17 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
     assert(env.action_space.high[0] == -env.action_space.low[0])
 
     # TODO: remove hardcoded value
-    normalize_states = True
-    normalize_returns = True
     state_range = [-999, 999]
     return_range = [-999, 999]
     # State normalization.
-    if normalize_states:
+    if args.normalize_states:
         with tf.variable_scope('state_rms'):
             state_rms = RunningMeanStd(shape=env.observation_space.shape)
     else:
         state_rms = None
 
     # Return normalization.
-    if normalize_returns:
+    if args.normalize_returns:
         with tf.variable_scope('return_rms'):
             return_rms = RunningMeanStd()
     else:
@@ -112,9 +110,9 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
                 recent_save_freq=args.estimator_save_freq,
                 replay_buffer_save_dir=args.replay_buffer_save_dir,
                 replay_buffer_save_freq=args.replay_buffer_save_freq,
-                normalize_states=normalize_states,
+                normalize_states=args.normalize_states,
                 state_rms=state_rms,
-                normalize_returns=normalize_returns,
+                normalize_returns=args.normalize_returns,
                 return_rms=return_rms,
                 num_updates=args.num_updates,
                 log_stats_freq=args.log_stats_freq,

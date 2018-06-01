@@ -116,10 +116,14 @@ def getArgParser():
     parser.add_argument("--train-freq", help="Training frequency (per number of rollout steps)", type=int, default=1)
     parser.add_argument("--num-test-eps", help="Number of test episodes", type=int, default=20)
     parser.add_argument("--test-freq", help="Testing frequency (per number of training episodes)", type=int, default=50)
+    parser.add_argument("--normalize-states", help="If normalize states", action="store_true")
+    parser.add_argument("--normalize-returns", help="If normalize returns", action="store_true")
 
     parser.set_defaults(stop_agent_learning=False)
     parser.set_defaults(render_env=False)
     parser.set_defaults(new_estimator=False)
+    parser.set_defaults(normalize_states=True)
+    parser.set_defaults(normalize_returns=False)
     return parser
 
 if __name__ == "__main__":
