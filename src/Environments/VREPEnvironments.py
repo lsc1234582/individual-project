@@ -262,7 +262,9 @@ class VREPPushTaskEnvironment(VREPEnvironment):
         """
         Criteria for termination
         """
-        return self._step >= self.MAX_STEP
+        state = self.state.reshape(1, -1)
+        assert(state.shape[1] == self.observation_space.shape[0])
+        return self._reachedGoalState(state) or self._step >= self.MAX_STEP
 
     def step(self, actions):
         """
@@ -698,10 +700,6 @@ class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
             reward = -0.01
         return np.array(reward).reshape((-1, 1))
 
-    def _isDone(self):
-        state = self.state.reshape(1, -1)
-        assert(state.shape[1] == self.observation_space.shape[0])
-        return self._reachedGoalState(state) or self._step >= self.MAX_STEP
 
 
 class VREPPushTask7DoFSparseRewardsIKEnvironment(VREPPushTask7DoFSparseRewardsEnvironment,
