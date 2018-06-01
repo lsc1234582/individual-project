@@ -221,7 +221,7 @@ class ReplayBuffer(object):
         rand_idx = random.randint(0, len(self._storage) - 1)
 
         idxes, is_complete = self._retrieve_eps_from_transition(rand_idx)
-        return tuple(list[self._encode_sample(idxes)] + [is_complete])
+        return tuple(list(self._encode_sample(idxes)) + [is_complete])
 
     def sample_batch(self, batch_size):
         """Sample a batch of experiences.

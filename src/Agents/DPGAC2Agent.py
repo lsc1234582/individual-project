@@ -1267,7 +1267,7 @@ class ModelBasedAgent(AgentBase):
             reward_batch = reward_batch.reshape(self._minibatch_size, -1)
             next_state_batch = next_state_batch.reshape(self._minibatch_size, -1)
 
-            model_eval_loss = self._model_estimator.evaluate(current_state_batch, action_batch, next_state_batch -\
-                    current_state_batch)
+            model_eval_loss = self._model_estimator.evaluate(current_state_batch, action_batch,
+                    next_state_batch - current_state_batch)
             self._stats_epoch_model_eval_loss.append(model_eval_loss)
 
