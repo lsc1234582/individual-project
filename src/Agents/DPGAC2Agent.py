@@ -1088,7 +1088,7 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             lambda3 = 0.1
             epislon = 1e-2
             demo_bonuses = np.zeros_like(td_error)
-            demo_bonuses[np.array(indexes) < self._replay_buffer.get_loaded_storage_size(), :] = 1.0
+            demo_bonuses[np.array(indexes) < self._replay_buffer.get_loaded_storage_size(), :] = 0.05
             #print("HAHA")
             #print(demo_bonuses)
             #print(td_error.shape[0] - nb_ns_td_target)
@@ -1097,7 +1097,11 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
             #print(self._replay_buffer._it_sum.sum())
             #print(self._replay_buffer._it_min.min())
             assert(not np.isnan(self._replay_buffer._it_sum.sum()))
+            assert(not np.isinf(self._replay_buffer._it_sum.sum()))
+            assert(self._replay_buffer._it_sum.sum() > 0)
             assert(not np.isnan(self._replay_buffer._it_min.min()))
+            assert(not np.isinf(self._replay_buffer._it_min.min()))
+            assert(self._replay_buffer._it_min.min() > 0)
 
             #TODO: Remove DEBUG
             if self._stats_tot_steps % self._debug_freq == 0:
