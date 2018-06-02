@@ -238,6 +238,7 @@ class AgentBase(object):
         termination:        Boolean
         """
         current_state = current_state.reshape(1, -1)
+        switched_to_train = False
         # Initialize the last state and action
         if self._last_state is None:
             self._last_state = current_state
@@ -287,6 +288,7 @@ class AgentBase(object):
                     self._num_success_test_eps = 0
                     self._test_eps_counter = 0
                     self._is_test_episode = False
+                    switched_to_train = True
             else:
                 episode_num_this_run = episode_num - episode_start_num + 1
                 # Record cumulative reward of trial
@@ -340,31 +342,31 @@ class AgentBase(object):
             self._last_action = None
             self.reset()
 
-        # Checkpoint recent
-        if (not self._is_test_episode) and is_learning and (self._stats_tot_steps % self._recent_save_freq == 0 or
-                self._stats_tot_steps >= self._num_train_steps):
-            logger.info("Saving agent checkpoints")
-            self.save(self._estimator_save_dir, step=episode_num, write_meta_graph=False)
+        if (not switched_to_train) and (not self._is_test_episode):
+            # Checkpoint recent
+            if is_learning and (self._stats_tot_steps % self._recent_save_freq == 0 or
+                    self._stats_tot_steps >= self._num_train_steps):
+                logger.info("Saving agent checkpoints")
+                self.save(self._estimator_save_dir, step=episode_num, write_meta_graph=False)
 
-        # Log stats
-        if (not self._is_test_episode) and self._log_stats_freq > 0 and self._stats_tot_steps % self._log_stats_freq == 0:
-            log_string = "Episode {0:>5} ({1:>5} in this run), R {2:>9.3f}, Ave R {3:>9.3f} {4}"
-            logger.info("Logging stats at step {}".format(self._stats_tot_steps))
-            self._logStats(self._stats_tot_steps)
+            # Log stats
+            if self._log_stats_freq > 0 and self._stats_tot_steps % self._log_stats_freq == 0:
+                logger.info("Logging stats at step {}".format(self._stats_tot_steps))
+                self._logStats(self._stats_tot_steps)
 
-        if (not self._is_test_episode) and self._stats_tot_steps % self._train_freq == 0:
-            # Train step
-            if is_learning and self._replay_buffer.size() >= self._minibatch_size and not self._stop_training:
-                self._train()
+            if self._stats_tot_steps % self._train_freq == 0:
+                # Train step
+                if is_learning and self._replay_buffer.size() >= self._minibatch_size and not self._stop_training:
+                    self._train()
 
-            # Evaluate step
-            if self._eval_replay_buffer is not None and self._eval_replay_buffer.size() >= self._minibatch_size:
-                self._evaluate()
+                # Evaluate step
+                if self._eval_replay_buffer is not None and self._eval_replay_buffer.size() >= self._minibatch_size:
+                    self._evaluate()
 
-        # Check if should switch to testing
-        if (not self._is_test_episode) and self._test_freq > 0 and self._stats_tot_steps % self._test_freq == 0:
-            logger.info("Start testing.")
-            self._is_test_episode = True
+            # Check if should switch to testing
+            if self._test_freq > 0 and self._stats_tot_steps % self._test_freq == 0:
+                logger.info("Start testing.")
+                self._is_test_episode = True
 
         if not termination:
             return best_action, termination, self._is_test_episode
