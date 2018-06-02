@@ -49,22 +49,31 @@ def runEnvironmentWithAgent(args):
         logger.info("Continueing at episode {}".format(episode_start))
         # Run the environment feedback loop
         train_episode_num = episode_start
-        while train_episode_num < episode_start + args.num_episodes:
-            observation = env.reset()
-            reward = np.array([0.0])
-            done = False
+
+        observation = env.reset()
+        reward = np.array([0.0])
+        done = False
+        action, done, is_test_episode = agent.act(observation, reward, done, episode_start, train_episode_num, global_episode_num,
+                is_learning=(not args.stop_agent_learning))
+        for step in range(args.num_train_steps):
+            if args.render_env:
+                env.render()
+            observation, reward, done, _ = env.step(action)
             action, done, is_test_episode = agent.act(observation, reward, done, episode_start, train_episode_num, global_episode_num,
-                    is_learning=(not args.stop_agent_learning))
+                                     is_learning=(not args.stop_agent_learning))
 
-            while not done:
-                if args.render_env:
-                    env.render()
-                observation, reward, done, _ = env.step(action)
+            if done:
+                observation = env.reset()
+                reward = np.array([0.0])
+                done = False
                 action, done, is_test_episode = agent.act(observation, reward, done, episode_start, train_episode_num, global_episode_num,
-                                         is_learning=(not args.stop_agent_learning))
-
-            if not is_test_episode:
-                train_episode_num += 1
+                        is_learning=(not args.stop_agent_learning))
+                if not is_test_episode:
+                    train_episode_num += 1
+                if agent._stop_training and agent.score():
+                    # No need to push forward when the agent stops training and has collected enough episodes to obtain a score
+                    logger.warn("Agent stopped training. Exiting experiment...")
+                    break
                 #logger.debug("Observation")
                 #logger.debug(observation)
                 #logger.debug("Action")
@@ -73,10 +82,6 @@ def runEnvironmentWithAgent(args):
                 #logger.debug(reward)
                 #logger.debug("Done")
                 #logger.debug(done)
-            # No need to push forward when the agent stops training and has collected enough episodes to obtain a score
-            if agent._stop_training and agent.score():
-                logger.warn("Agent stopped training. Exiting experiment...")
-                break
 
     logger.info("Best score: {}".format(agent.score()))
     logger.info("Exiting environment: {}".format(args.env_name))
@@ -93,29 +98,29 @@ def getArgParser():
     parser.add_argument("--summary-dir", help="directory for storing stats (tensorboard info)", required=True)
     #parser.add_argument("--agent-name", help="name of the agent")
     parser.add_argument("--stop-agent-learning", help="Is Agent learning", action="store_true")
-    parser.add_argument("--num-episodes", help="max num of episodes to do while training", type=int, default=500)
-    parser.add_argument("--max-episode-length", help="max length of 1 episode", type=int, default=100)
+    parser.add_argument("--num-train-steps", help="max num of training steps", type=int, default=1000000)
+    parser.add_argument("--max-episode-length", help="max length of 1 episode", type=int, default=1000)
     parser.add_argument("--random-seed", help="random seed for repeatability", type=int, default=1234)
     parser.add_argument("--render-env", help="render the env", action="store_true")
     parser.add_argument("--new-estimator", help="if creating new estimators instead of loading old ones", action="store_true")
     parser.add_argument("--max-estimators-to-keep", help="maximal number of estimators to keep checkpointing",
             type=int, default=2)
-    parser.add_argument("--estimator-save-freq", help="estimator save frequency (per number of episodes)",
-            type=int, default=50)
+    parser.add_argument("--estimator-save-freq", help="estimator save frequency (per number of rollout steps)",
+            type=int, default=10000)
     parser.add_argument("--estimator-load-mode", help="0: load most recent 1: load best", type=int, default=0)
     parser.add_argument("--replay-buffer-load-dir", help="directory for loading replay buffer")
     parser.add_argument("--replay-buffer-save-dir", help="directory for storing replay buffer")
-    parser.add_argument("--replay-buffer-save-freq", help="replay buffer save frequency (per number of episodes", type=int,
+    parser.add_argument("--replay-buffer-save-freq", help="replay buffer save frequency (per number of episodes)", type=int,
             default=500)
     parser.add_argument("--log-stats-freq", help="Stats log(tensorboard info) frequency (per number of\
-                        steps/transitions).\ Zero to turn off stats log", type=int, default=100)
+                        rollout steps/transitions).\ Zero to turn off stats log", type=int, default=100)
     parser.add_argument("--eval-replay-buffer-load-dir", help="directory for loading evaluation replay buffer")
 
     # Agent parameters
     parser.add_argument("--num-updates", help="Number of estimator updates per training step", type=int, default=1)
     parser.add_argument("--train-freq", help="Training frequency (per number of rollout steps)", type=int, default=1)
     parser.add_argument("--num-test-eps", help="Number of test episodes", type=int, default=20)
-    parser.add_argument("--test-freq", help="Testing frequency (per number of training episodes)", type=int, default=50)
+    parser.add_argument("--test-freq", help="Testing frequency (per number of rollout steps)", type=int, default=5000)
     parser.add_argument("--normalize-states", help="If normalize states", action="store_true")
     parser.add_argument("--normalize-returns", help="If normalize returns", action="store_true")
 

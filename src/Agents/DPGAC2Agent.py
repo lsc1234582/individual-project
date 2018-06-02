@@ -1,3 +1,4 @@
+import collections
 import numpy as np
 import random
 import tensorflow as tf
@@ -16,14 +17,14 @@ logger = getModuleLogger(__name__)
 
 class AgentBase(object):
     def __init__(self, sess, env, replay_buffer,
-            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
+            discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
             log_stats_freq=1, train_freq=1, eval_replay_buffer=None, test_freq=50, num_test_eps=20):
         self._sess = sess
         self._env = env
         self._discount_factor = discount_factor
-        self._num_episodes = num_episodes
+        self._num_train_steps = num_train_steps
         self._max_episode_length = max_episode_length
         self._minibatch_size = minibatch_size
         self._actor_noise = actor_noise
@@ -35,9 +36,9 @@ class AgentBase(object):
 
         # To implement early stop
         self._stop_training = False
-        self._last_average = None
-        self._num_non_imp_eps = 0  # Maximal number of non-improving episodes
-        self._max_num_non_imp_eps = 200  # Maximal number of non-improving episodes
+        #self._last_average = None
+        #self._num_non_imp_eps = 0  # Maximal number of non-improving episodes
+        #self._max_num_non_imp_eps = 200  # Maximal number of non-improving episodes
 
         # Summary and checkpoints
         # Agent stats related
@@ -45,10 +46,10 @@ class AgentBase(object):
         self._stats_sample_size = 100
 
         # The number of episodes to average total reward over; used for score
-        self._num_rewards_to_average = min(100, self._num_episodes - 1)
+        self._num_rewards_to_average = 100
 
         self._episode_return = 0
-        self._episode_returns = []
+        self._episode_returns = collections.deque(maxlen=self._num_rewards_to_average)
         # Rollout stats related
         # Our objective metric
         self._best_average_episode_return = None
@@ -292,7 +293,7 @@ class AgentBase(object):
                 self._episode_returns.append(self._episode_return)
                 self._stats_epoch_episode_returns.append(self._episode_return)
                 self._stats_epoch_episode_steps.append(self._step)
-                average = np.mean(self._episode_returns[-self._num_rewards_to_average:])
+                average = np.mean(self._episode_returns)
 
                 # Update episode number variable
                 self._sess.run(tf.assign(episode_num_var, episode_num))
@@ -306,30 +307,22 @@ class AgentBase(object):
                     improve_str = ''
 
                 # Log the episode summary
-                log_string = "Episode {0:>5}/{1:>5} ({2:>5}/{3:>5} in this run), " +\
-                             "R {4:>9.3f}, Ave R {5:>9.3f} {6}"
+                log_string = "Episode {0:>5} ({1:>5} in this run), R {2:>9.3f}, Ave R {3:>9.3f} {4}"
 
-                logger.info(log_string.format(episode_num, self._num_episodes + episode_start_num - 1,
+                logger.info(log_string.format(episode_num,
                     episode_num_this_run,
-                    self._num_episodes,
                     self._episode_return, average, improve_str))
 
-
-                # Checkpoint
-                if is_learning:
-                    if improve_str == '*':
-                        logger.info("Saving best agent so far")
-                        self.save(self._estimator_save_dir, is_best=True, step=episode_num, write_meta_graph=False)
-                    if (episode_num_this_run % self._recent_save_freq == 0 or episode_num_this_run >= self._num_episodes):
-                        logger.info("Saving agent checkpoints")
-                        self.save(self._estimator_save_dir, step=episode_num, write_meta_graph=False)
+                # Checkpoint best
+                if is_learning and improve_str == '*':
+                    logger.info("Saving best agent so far")
+                    self.save(self._estimator_save_dir, is_best=True, step=episode_num, write_meta_graph=False)
 
                 # Save replay buffer
-                if (not self._replay_buffer_save_dir is None) and \
-                    (episode_num_this_run % self._replay_buffer_save_freq == 0 or episode_num_this_run >= self._num_episodes):
+                if (self._replay_buffer_save_dir is not None) and \
+                    (episode_num_this_run % self._replay_buffer_save_freq == 0):
                     logger.info("Saving replay buffer")
                     self.saveReplayBuffer(self._replay_buffer_save_dir)
-
                 # Check for convergence
                 #if self._last_average and average <= self._last_average:
                 #    self._num_non_imp_eps += 1
@@ -339,10 +332,6 @@ class AgentBase(object):
                 #    logger.info("Agent is not improving; stop training")
                 #    self._stop_training = True
                 #self._last_average = average
-                # Check if should switch to testing
-                if self._test_freq > 0 and episode_num_this_run % self._test_freq == 0:
-                    logger.info("Start testing.")
-                    self._is_test_episode = True
 
             # Reset for new episode
             self._episode_return = 0.0
@@ -351,9 +340,16 @@ class AgentBase(object):
             self._last_action = None
             self.reset()
 
+        # Checkpoint recent
+        if (not self._is_test_episode) and is_learning and (self._stats_tot_steps % self._recent_save_freq == 0 or
+                self._stats_tot_steps >= self._num_train_steps):
+            logger.info("Saving agent checkpoints")
+            self.save(self._estimator_save_dir, step=episode_num, write_meta_graph=False)
 
         # Log stats
         if (not self._is_test_episode) and self._log_stats_freq > 0 and self._stats_tot_steps % self._log_stats_freq == 0:
+            log_string = "Episode {0:>5} ({1:>5} in this run), R {2:>9.3f}, Ave R {3:>9.3f} {4}"
+            logger.info("Logging stats at step {}".format(self._stats_tot_steps))
             self._logStats(self._stats_tot_steps)
 
         if (not self._is_test_episode) and self._stats_tot_steps % self._train_freq == 0:
@@ -365,6 +361,11 @@ class AgentBase(object):
             if self._eval_replay_buffer is not None and self._eval_replay_buffer.size() >= self._minibatch_size:
                 self._evaluate()
 
+        # Check if should switch to testing
+        if (not self._is_test_episode) and self._test_freq > 0 and self._stats_tot_steps % self._test_freq == 0:
+            logger.info("Start testing.")
+            self._is_test_episode = True
+
         if not termination:
             return best_action, termination, self._is_test_episode
         else:
@@ -372,12 +373,12 @@ class AgentBase(object):
 
 class DPGAC2Agent(AgentBase):
     def __init__(self, sess, env, policy_estimator, value_estimator, replay_buffer,
-            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
+            discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
             log_stats_freq=1, train_freq=1, eval_replay_buffer=None, test_freq=50, num_test_eps=20):
         super().__init__(sess, env, replay_buffer,
-            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
+            discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
             log_stats_freq, train_freq, eval_replay_buffer, test_freq, num_test_eps)
@@ -486,12 +487,12 @@ class DPGAC2Agent(AgentBase):
 
 class DPGAC2WithDemoAgent(AgentBase):
     def __init__(self, sess, policy_estimator, value_estimator, replay_buffer,
-            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise,
+            discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise,
             summary_writer, imitation_summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1):
          super().__init__(sess, policy_estimator, value_estimator, replay_buffer,
-            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
+            discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates)
          self._imitation_summary_writer = imitation_summary_writer
@@ -727,12 +728,12 @@ class DPGAC2WithDemoAgent(AgentBase):
 
 class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
     def __init__(self, sess, policy_estimator, value_estimator, model_estimator, replay_buffer, model_eval_replay_buffer,
-            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise,
+            discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise,
             summary_writer, imitation_summary_writer, model_summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1):
          super().__init__(sess, policy_estimator, value_estimator, replay_buffer,
-            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise,
+            discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise,
             summary_writer, imitation_summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates)
@@ -1016,12 +1017,12 @@ class DPGAC2WithMultiPModelAndDemoAgent(DPGAC2WithDemoAgent):
 
 class DPGAC2WithPrioritizedRB(DPGAC2Agent):
     def __init__(self, sess, env, policy_estimator, value_estimator, replay_buffer,
-            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
+            discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
             log_stats_freq=1, train_freq=1, eval_replay_buffer=None, test_freq=50, num_test_eps=20):
          super().__init__(sess, env, policy_estimator, value_estimator, replay_buffer,
-            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
+            discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
             log_stats_freq, train_freq, eval_replay_buffer, test_freq, num_test_eps)
@@ -1134,12 +1135,12 @@ class DPGAC2WithPrioritizedRB(DPGAC2Agent):
 
 class ModelBasedAgent(AgentBase):
     def __init__(self, sess, env, model_estimator, replay_buffer,
-            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
+            discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, state_change_rms, normalize_returns, return_rms, num_updates=1,
             log_stats_freq=1, train_freq=1, eval_replay_buffer=None, test_freq=50, num_test_eps=20):
         super().__init__(sess, env, replay_buffer,
-            discount_factor, num_episodes, max_episode_length, minibatch_size, actor_noise, summary_writer,
+            discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
             log_stats_freq, train_freq, eval_replay_buffer, test_freq, num_test_eps)

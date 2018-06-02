@@ -98,7 +98,7 @@ def MakeDPGAC2PEH2VEH2(session, env, args):
                 policy_estimator=policy_estimator,
                 value_estimator=value_estimator,
                 discount_factor=args.discount_factor,
-                num_episodes=args.num_episodes,
+                num_train_steps=args.num_train_steps,
                 max_episode_length=args.max_episode_length,
                 minibatch_size=2**args.minibatch_size_log,
                 actor_noise=actor_noise,
