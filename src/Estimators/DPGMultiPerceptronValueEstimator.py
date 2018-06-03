@@ -139,13 +139,16 @@ class DPGMultiPerceptronValueEstimator(object):
 
             # Add the action tensor in the last hidden layer
             # Use two temp layers to get the corresponding weights and biases
-            t1 = tflearn.fully_connected(net, self._h_layer_shapes[-1])
-            tflearn.helpers.regularizer.add_weights_regularizer(t1.W, "L2")
-            t2 = tflearn.fully_connected(action, self._h_layer_shapes[-1])
-            tflearn.helpers.regularizer.add_weights_regularizer(t2.W, "L2")
+            #t1 = tflearn.fully_connected(net, self._h_layer_shapes[-1])
+            #tflearn.helpers.regularizer.add_weights_regularizer(t1.W, "L2")
+            #t2 = tflearn.fully_connected(action, self._h_layer_shapes[-1])
+            #tflearn.helpers.regularizer.add_weights_regularizer(t2.W, "L2")
 
-            net = tflearn.activation(
-                tf.matmul(net, t1.W) + tf.matmul(action, t2.W) + t2.b, activation='relu')
+            net = tf.concat([net, action], axis=1)
+            net = tflearn.fully_connected(net, self._h_layer_shapes[-1])
+            tflearn.helpers.regularizer.add_weights_regularizer(net.W, "L2")
+            net = tflearn.layers.normalization.batch_normalization(net)
+            net = tflearn.activations.relu(net)
 
             # linear layer connected to 1 output representing Q(s,a)
             # Weights are init to Uniform[-3e-3, 3e-3]
