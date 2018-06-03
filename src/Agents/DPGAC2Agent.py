@@ -243,12 +243,12 @@ class AgentBase(object):
         if self._last_state is None:
             self._last_state = current_state
             best_action = self._getBestAction(self._last_state)
-            # Add exploration noise when training
-            if is_learning:
-                best_action += self._actor_noise()
-            self._last_action = best_action
             if not self._is_test_episode:
+                # Add exploration noise when training
+                if is_learning:
+                    best_action += self._actor_noise()
                 self._recordLogAfterBestAction(state=self._last_state, best_action=best_action)
+            self._last_action = best_action
             return best_action, termination, self._is_test_episode
 
         # Book keeping
@@ -269,10 +269,10 @@ class AgentBase(object):
         if not termination:
             self._last_state = current_state.copy()
             best_action = self._getBestAction(self._last_state)
-            # Add exploration noise when training
-            if is_learning:
-                best_action += self._actor_noise()
             if not self._is_test_episode:
+                # Add exploration noise when training
+                if is_learning:
+                    best_action += self._actor_noise()
                 self._recordLogAfterBestAction(state=self._last_state, best_action=best_action)
 
             self._last_action = best_action
