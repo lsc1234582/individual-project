@@ -85,6 +85,7 @@ class MultiPerceptronModelEstimator(object):
         return inputs, action, outputs
 
     def update(self, inputs, action, actual_outputs):
+        tflearn.is_training(True, session=self._sess)
         return self._sess.run([self._denorm_outputs, self._optimize, self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,
@@ -92,12 +93,14 @@ class MultiPerceptronModelEstimator(object):
         })
 
     def predict(self, inputs, action):
+        tflearn.is_training(False, session=self._sess)
         return self._sess.run(self._denorm_outputs, feed_dict={
             self._inputs: inputs,
             self._action: action
         })
 
     def evaluate(self, inputs, action, actual_outputs):
+        tflearn.is_training(False, session=self._sess)
         return self._sess.run([self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,

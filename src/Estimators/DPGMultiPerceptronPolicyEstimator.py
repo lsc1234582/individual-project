@@ -115,6 +115,7 @@ class DPGMultiPerceptronPolicyEstimator(object):
         return inputs, out, scaled_out
 
     def updateImitation(self, inputs, actual_outputs):
+        tflearn.is_training(True, session=self._sess)
         _, loss = self._sess.run([self._imitation_optimize, self._imitation_loss], feed_dict={
             self._inputs: inputs,
             self._actual_outputs: actual_outputs
@@ -126,17 +127,20 @@ class DPGMultiPerceptronPolicyEstimator(object):
         return loss
 
     def update(self, inputs, a_gradient):
+        tflearn.is_training(True, session=self._sess)
         self._sess.run(self._optimize, feed_dict={
             self._inputs: inputs,
             self._action_gradient: a_gradient
         })
 
     def predict(self, inputs):
+        tflearn.is_training(False, session=self._sess)
         return self._sess.run(self._scaled_out, feed_dict={
             self._inputs: inputs
         })
 
     def predict_target(self, inputs):
+        tflearn.is_training(False, session=self._sess)
         return self._sess.run(self._target_scaled_out, feed_dict={
             self._target_inputs: inputs
         })
