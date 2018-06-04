@@ -160,7 +160,7 @@ class DPGMultiPerceptronValueEstimator(object):
         return inputs, action, out
 
     def update(self, inputs, action, predicted_q_value):
-        tflearn.is_training(True, session=self._sess)
+        tflearn.is_training(False, session=self._sess)
         return self._sess.run([self._optimize, self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,
@@ -168,7 +168,7 @@ class DPGMultiPerceptronValueEstimator(object):
         })
 
     def update_with_weights(self, inputs, action, td_target, weights):
-        tflearn.is_training(True, session=self._sess)
+        tflearn.is_training(False, session=self._sess)
         return self._sess.run([self._weighted_optimize, self._td_error, self._weighted_loss, self._loss], feed_dict={
             self._inputs: inputs,
             self._action: action,
@@ -186,7 +186,7 @@ class DPGMultiPerceptronValueEstimator(object):
         weights: ...
         nb_ns_td_target: Number of N-step td targets in the batch
         """
-        tflearn.is_training(True, session=self._sess)
+        tflearn.is_training(False, session=self._sess)
         return self._sess.run([self._weighted_n1s_optimize, self._td_error, self._weighted_n1s_loss,\
             self._n1s_loss], feed_dict={
             self._inputs: inputs,
@@ -211,7 +211,7 @@ class DPGMultiPerceptronValueEstimator(object):
         })
 
     def action_gradients(self, inputs, actions):
-        tflearn.is_training(True, session=self._sess)
+        tflearn.is_training(False, session=self._sess)
         return self._sess.run(self._action_grads, feed_dict={
             self._inputs: inputs,
             self._action: actions
