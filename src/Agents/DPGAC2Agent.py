@@ -60,6 +60,8 @@ class AgentBase(object):
         self._stats_tot_steps = 0
         self._log_stats_freq = log_stats_freq
 
+        self._best_score_step = 0
+
         self._replay_buffer = replay_buffer
         self._summary_writer = summary_writer
         self._estimator_save_dir = estimator_save_dir
@@ -209,6 +211,9 @@ class AgentBase(object):
     def score(self):
         return self._best_average_episode_return
 
+    def scoreStep(self):
+        return self._best_score_step
+
     def reset(self):
         self._actor_noise.reset()
 
@@ -304,6 +309,7 @@ class AgentBase(object):
                 if len(self._episode_returns) >= self._num_rewards_to_average and\
                     (self._best_average_episode_return is None or self._best_average_episode_return < average):
                     self._best_average_episode_return = average
+                    self._best_score_step = self._stats_tot_steps
                     improve_str = '*'
                 else:
                     improve_str = ''

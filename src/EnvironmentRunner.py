@@ -85,6 +85,8 @@ def runEnvironmentWithAgent(args):
 
     logger.info("Best score: {}".format(agent.score()))
     logger.info("Exiting environment: {}".format(args.env_name))
+    with open("BestScore.log", "w") as f:
+        f.write("{}\n{}".format(agent.score(), agent.scoreStep()))
     return agent.score()
 
 def getArgParser():
