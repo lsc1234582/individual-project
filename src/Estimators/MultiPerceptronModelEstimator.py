@@ -73,7 +73,8 @@ class MultiPerceptronModelEstimator(object):
                 net = tflearn.fully_connected(net, self._h_layer_shapes[i])
                 # Add l2 regularizer
                 tflearn.helpers.regularizer.add_weights_regularizer(net.W, "L2")
-                net = tflearn.layers.normalization.batch_normalization(net)
+                # Add layer normalization
+                net = tf.contrib.layers.layer_norm(net, center=True, scale=True)
                 net = tflearn.activations.relu(net)
 
             # linear layer
