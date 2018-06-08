@@ -254,7 +254,7 @@ class AgentBase(object):
                     best_action += self._actor_noise()
                 self._recordLogAfterBestAction(state=self._last_state, best_action=best_action)
             self._last_action = best_action
-            return best_action, termination, self._is_test_episode
+            return best_action, termination, self._is_test_episode, self._stats_tot_steps
 
         # Book keeping
         self._episode_return += last_reward.squeeze()
@@ -375,9 +375,9 @@ class AgentBase(object):
                 self._is_test_episode = True
 
         if not termination:
-            return best_action, termination, self._is_test_episode
+            return best_action, termination, self._is_test_episode, self._stats_tot_steps
         else:
-            return None, termination, self._is_test_episode
+            return None, termination, self._is_test_episode, self._stats_tot_steps
 
 class DPGAC2Agent(AgentBase):
     def __init__(self, sess, env, policy_estimator, value_estimator, replay_buffer,
