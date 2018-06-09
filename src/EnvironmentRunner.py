@@ -27,6 +27,8 @@ def runEnvironmentWithAgent(args):
     with EnvironmentContext(args.env_name, port=args.env_vrep_port) as env, tf.Session(config=config) as session:
         # To record progress across different training sessions
         global_episode_num = tf.Variable(0, name="global_episode_num", trainable=False)
+        global_step_num = tf.Variable(0, name="global_step_num", trainable=False)
+        #global_total_step_num = tf.Variable(0, name="global_total_step_num", trainable=False)
         logger.info("Making agent {}".format(args.agent_name))
         agent = MakeAgent(session, env, args)
         agent.initialize()
@@ -45,32 +47,45 @@ def runEnvironmentWithAgent(args):
             agent.loadEvalReplayBuffer(args.eval_replay_buffer_load_dir)
 
 
-        episode_start = session.run(global_episode_num) + 1
+        episode_start,  step_start = session.run([global_episode_num, global_step_num])
+        episode_start += 1
+        # Persist total number of steps so that progress across different running sessions can be preserved
+        #total_steps = session.run(global_total_step_num)
+        #if total_steps == 0:
+        #    total_steps = args.num_train_steps
+        #    session.run(tf.assign(global_total_step_num, total_steps))
+        # Start agent from step_start
+        agent._stats_tot_steps = step_start
+
         logger.info("Continueing at episode {}".format(episode_start))
+        logger.info("Continueing from step {}".format(step_start))
         # Run the environment feedback loop
         train_episode_num = episode_start
 
         observation = env.reset()
         reward = np.array([0.0])
         done = False
-        action, done, is_test_episode, step = agent.act(observation, reward, done, episode_start, train_episode_num, global_episode_num,
-                is_learning=(not args.stop_agent_learning))
+        action, done, is_test_episode, step = agent.act(observation, reward, done, episode_start, train_episode_num,
+                global_step_num, is_learning=(not args.stop_agent_learning))
         #for step in range(args.num_train_steps):
         while step < args.num_train_steps:
             if args.render_env:
                 env.render()
             observation, reward, done, _ = env.step(action)
-            action, done, is_test_episode, step = agent.act(observation, reward, done, episode_start, train_episode_num, global_episode_num,
-                                     is_learning=(not args.stop_agent_learning))
+            action, done, is_test_episode, step = agent.act(observation, reward, done, episode_start,
+                    train_episode_num, global_step_num, is_learning=(not args.stop_agent_learning))
 
             if done:
                 observation = env.reset()
                 reward = np.array([0.0])
                 done = False
-                action, done, is_test_episode, step = agent.act(observation, reward, done, episode_start, train_episode_num, global_episode_num,
-                        is_learning=(not args.stop_agent_learning))
+                action, done, is_test_episode, step = agent.act(observation, reward, done, episode_start,
+                        train_episode_num, global_step_num, is_learning=(not args.stop_agent_learning))
                 if not is_test_episode:
                     train_episode_num += 1
+                    # Update episode number variable
+                    session.run(tf.assign(global_episode_num, train_episode_num))
+
                 if agent._stop_training and agent.score():
                     # No need to push forward when the agent stops training and has collected enough episodes to obtain a score
                     logger.warn("Agent stopped training. Exiting experiment...")

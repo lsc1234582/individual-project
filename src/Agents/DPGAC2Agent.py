@@ -222,7 +222,7 @@ class AgentBase(object):
             self._state_rms.update(np.array([self._last_state]))
 
 
-    def act(self, current_state, last_reward, termination, episode_start_num, episode_num, episode_num_var, is_learning=False):
+    def act(self, current_state, last_reward, termination, episode_start_num, episode_num, global_step_num, is_learning=False):
         """
         NB: Although the shape of the inputs are all batch version, this function only deals with single-step
         transition. This means the "batch_size" is always 1
@@ -234,7 +234,7 @@ class AgentBase(object):
         termination:        Boolean
         episode_start_num:  Int
         episode_num:        Int                                     The training episode number
-        episode_num_var:    tf.Variable
+        global_step_num:    tf.vaiable
         is_learning:        Boolean
 
         Returns
@@ -264,6 +264,7 @@ class AgentBase(object):
             termination = True
         if not self._is_test_episode:
             self._stats_tot_steps += 1
+            self._sess.run(tf.assign(global_step_num, self._stats_tot_steps))
             # Store the last step
             self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(),
                 last_reward.squeeze(),
@@ -301,9 +302,6 @@ class AgentBase(object):
                 self._stats_epoch_episode_returns.append(self._episode_return)
                 self._stats_epoch_episode_steps.append(self._step)
                 average = np.mean(self._episode_returns)
-
-                # Update episode number variable
-                self._sess.run(tf.assign(episode_num_var, episode_num))
 
                 # Check for improvements
                 if len(self._episode_returns) >= self._num_rewards_to_average and\
@@ -350,8 +348,7 @@ class AgentBase(object):
 
         if (not switched_to_train) and (not self._is_test_episode):
             # Checkpoint recent
-            if is_learning and (self._stats_tot_steps % self._recent_save_freq == 0 or
-                    self._stats_tot_steps >= self._num_train_steps):
+            if is_learning and self._stats_tot_steps % self._recent_save_freq == 0:
                 logger.info("Saving agent checkpoints")
                 self.save(self._estimator_save_dir, step=episode_num, write_meta_graph=False)
 
