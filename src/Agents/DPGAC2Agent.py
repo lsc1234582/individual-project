@@ -264,7 +264,6 @@ class AgentBase(object):
             termination = True
         if not self._is_test_episode:
             self._stats_tot_steps += 1
-            self._sess.run(tf.assign(global_step_num, self._stats_tot_steps))
             # Store the last step
             self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(),
                 last_reward.squeeze(),
@@ -350,6 +349,7 @@ class AgentBase(object):
             # Checkpoint recent
             if is_learning and self._stats_tot_steps % self._recent_save_freq == 0:
                 logger.info("Saving agent checkpoints")
+                self._sess.run(tf.assign(global_step_num, self._stats_tot_steps))
                 self.save(self._estimator_save_dir, step=episode_num, write_meta_graph=False)
 
             # Log stats
