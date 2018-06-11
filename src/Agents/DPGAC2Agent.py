@@ -1165,7 +1165,7 @@ class ModelBasedAgent(AgentBase):
 
         #TODO: remove hard coded
         # Number of random actions to take
-        self._num_random_action = 100
+        self._num_random_action = 50
         # Planning horizon for model-based learning
         self._model_plan_horizon = 5
         self._state_change_rms = state_change_rms
