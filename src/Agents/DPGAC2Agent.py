@@ -1147,7 +1147,8 @@ class ModelBasedAgent(AgentBase):
             discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, state_change_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1, train_freq=1, eval_replay_buffer=None, test_freq=50, num_test_eps=20):
+            log_stats_freq=1, train_freq=1, eval_replay_buffer=None, test_freq=50, num_test_eps=20, horizon_length=5,
+            num_random_action=50):
         super().__init__(sess, env, replay_buffer,
             discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
@@ -1164,10 +1165,10 @@ class ModelBasedAgent(AgentBase):
             self._num_evals = 10
 
         #TODO: remove hard coded
-        # Number of random actions to take
-        self._num_random_action = 50
         # Planning horizon for model-based learning
-        self._model_plan_horizon = 5
+        self._horizon_length = horizon_length
+        # Number of random actions to take
+        self._num_random_action = num_random_action
         self._state_change_rms = state_change_rms
 
 
@@ -1193,47 +1194,92 @@ class ModelBasedAgent(AgentBase):
 
         return stats, aux
 
+    def _getBestActionAux(self, num_rollout, batch_size, state):
+        current_state = np.concatenate([np.copy(state) for _ in range(num_rollout)], axis=0)
+        next_state = np.copy(current_state)
+
+        num_rollout *= batch_size
+        assert current_state.shape[0] == num_rollout and current_state.shape[1] ==\
+                    self._model_estimator._state_dim
+
+        best_action = None
+        first_actions = None
+        horizon_reward = np.zeros((num_rollout, 1))
+        done_selection = np.array([False for _ in range(num_rollout)])
+        for j in range(self._horizon_length):
+            if num_rollout <= 0:
+                break
+            # TODO: Remove hard coded max velocity
+            #print(self._env.action_space.shape[0])
+            #print(num_rollout)
+            actions = generateRandomAction(self._env.action_space.high[0], self._env.action_space.shape[0] *
+                    num_rollout).reshape(num_rollout, -1)
+            if j == 0:
+                first_actions = actions
+            # Proceed to next state
+            assert current_state.shape[0] == num_rollout and current_state.shape[1] == self._model_estimator._state_dim
+            next_state[~done_selection]= current_state + self._model_estimator.predict(current_state, actions)
+            horizon_reward[~done_selection] += self._env.getRewards(current_state, actions, next_state[~done_selection])
+            # Detect termination, only proceed with non-terminated states
+            done_selection = self._env._reachedGoalState(next_state)
+            #assert next_state.shape[0] == num_rollout and next_state.shape[1] == self._model_estimator._state_dim
+            #print(done_selection.shape)
+            #print(done_selection)
+            current_state = np.copy(next_state[~done_selection, :])
+            num_rollout = current_state.shape[0]
+
+        assert first_actions is not None
+        return horizon_reward, first_actions
+
     def _getBestAction(self, state):
         """
-        Assume reward function is given
+        Assume reward function is given.
+        NOTE: Doesn't support batch.
 
         Args
         -------
-        state:          array(state_dim)/array(-1, state_dim)
+        state:          array(state_dim)/array(1, state_dim)
 
         Returns
         best_action:    array(-1, action_dim)
         -------
         """
         assert self._num_random_action != 0
-        assert self._model_plan_horizon != 0
+        assert self._horizon_length != 0
         state = state.reshape(-1, self._model_estimator._state_dim)
         batch_size = state.shape[0]
+        #assert batch_size == 1
 
-        best_action = None
-        max_horizon_reward = np.zeros((batch_size, 1)) - float("inf")
-        for i in range(self._num_random_action):
-            first_action = None
-            horizon_reward = np.zeros((batch_size, 1))
-            current_state = np.copy(state)
-            for j in range(self._model_plan_horizon):
-                # TODO: Remove hard coded max velocity
-                action = generateRandomAction(1.0, 7 * batch_size).reshape(batch_size, -1)
-                if j == 0:
-                    first_action = action
-                # Proceed to next state
-                next_state = current_state + self._model_estimator.predict(current_state, action)
-                horizon_reward += self._env.getRewards(current_state, action, next_state)
-                current_state = np.copy(next_state)
-            if best_action is None:
-                best_action = first_action
-                max_horizon_reward = horizon_reward
-            else:
-                better_action_indx = (horizon_reward > max_horizon_reward).squeeze()
-                best_action[better_action_indx, :] = first_action[better_action_indx, :]
-                max_horizon_reward[better_action_indx, :] = horizon_reward[better_action_indx, :]
+        num_rollout = self._num_random_action
 
-        return best_action
+        horizon_reward, first_actions = self._getBestActionAux(num_rollout, batch_size, state)
+
+        # Simple version to improve performance during acting
+        if batch_size == 1:
+            max_horizon_reward = np.max(horizon_reward)
+            best_action_selection = (horizon_reward == max_horizon_reward).squeeze()
+            best_actions = first_actions[best_action_selection][0]
+        else:
+            horizon_reward = horizon_reward.reshape(self._num_random_action, batch_size)
+            max_horizon_reward = np.max(horizon_reward, axis=0)
+            best_action_selection = horizon_reward == max_horizon_reward
+            # Remove duplicate best actions within all batches
+            mask = np.array([False for i in range(batch_size)])
+            for i in range(self._num_random_action):
+                best_action_selection[i] &= ~mask
+                mask |= best_action_selection[i]
+            best_actions = first_actions.reshape(num_rollout, batch_size,
+                    self._model_estimator._action_dim)[best_action_selection, :]
+
+        return best_actions.reshape(batch_size, self._model_estimator._action_dim)
+
+        #if best_action is None:
+        #    best_action = first_action
+        #    max_horizon_reward = horizon_reward
+        #else:
+        #    better_action_indx = (horizon_reward > max_horizon_reward).squeeze()
+        #    best_action[better_action_indx, :] = first_action[better_action_indx, :]
+        #    max_horizon_reward[better_action_indx, :] = horizon_reward[better_action_indx, :]
 
     def _recordLogAfterBestAction(self, *args, **kwargs):
         """

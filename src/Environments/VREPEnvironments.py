@@ -255,8 +255,8 @@ class VREPPushTaskEnvironment(VREPEnvironment):
         """
         If state has reached goal state
         """
-        cube_to_target_dist = np.sqrt(np.sum(np.square(state[:, 21:24])))
-        return cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1
+        cube_to_target_dist = np.sqrt(np.sum(np.square(state[:, 21:24]), axis=1))
+        return (cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1).squeeze()
 
     def _isDone(self):
         """
@@ -1055,10 +1055,10 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
         """
         If state has reached goal state
         """
-        tg_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 18:21])))
-        tg_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 21:24])))
-        tg_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 24:27])))
-        return tg_spot_bot_dist + tg_spot_l_dist + tg_spot_r_dist <= 0.1
+        tg_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 18:21]), axis=1))
+        tg_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 21:24]), axis=1))
+        tg_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 24:27]), axis=1))
+        return (tg_spot_bot_dist + tg_spot_l_dist + tg_spot_r_dist <= 0.1).squeeze()
 
     def _isDone(self):
         state = self.state.reshape(1, -1)

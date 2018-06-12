@@ -103,6 +103,8 @@ def MakeModelBasedMEH2(session, env, args):
                 eval_replay_buffer=eval_replay_buffer,
                 num_test_eps=args.num_test_eps,
                 test_freq=args.test_freq,
+                horizon_length=args.mpc_horizon_length,
+                num_random_action=args.mpc_num_action,
                 )
 
 def getArgParser():
@@ -116,6 +118,8 @@ def getArgParser():
     parser.add_argument("--me-learning-rate", help="Model esitmator learning rate", type=float, default=0.001)
     parser.add_argument("--me-h1-multiplier", help="Model estimator hidden layer 1 size multiplier", type=float, default=10)
     parser.add_argument("--me-h2-multiplier", help="Model estimator hidden layer 2 size multiplier", type=float, default=10)
+    parser.add_argument("--mpc-horizon-length", help="MPC horizon length", type=int, default=5)
+    parser.add_argument("--mpc-num-action", help="MPC number of actions", type=int, default=50)
 
     return parser
 
