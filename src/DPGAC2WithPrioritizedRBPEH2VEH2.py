@@ -146,9 +146,23 @@ def getArgParser():
     return parser
 
 if __name__ == "__main__":
+    import json
+
+    class Args:
+        def __init__(self, **entries):
+            self.__dict__.update(entries)
 
     args = getArgParser().parse_args()
-    args.agent_name="DPGAC2WithPrioritizedRBPEH2VEH2"
+
+    if args.config_json is not None:
+        with open(args.config_json, "r") as f:
+            config_dicts = json.load(f)
+        args_dicts = vars(args)
+        args_dicts.update(config_dicts)
+        args = Args(**args_dicts)
+
+    args.agent_name = "DPGAC2WithPrioritizedRBPEH2VEH2"
+
 
     logger.info("Starting Agent {} in Environment {}".format(args.agent_name, args.env_name))
     runEnvironmentWithAgent(args)

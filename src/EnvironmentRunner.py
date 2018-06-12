@@ -112,8 +112,8 @@ def getArgParser():
     # Session parameters
     parser.add_argument("--env-name", help="choose the env[VREPPushTask, Pendulum-v0]", required=True)
     parser.add_argument("--env-vrep-port", help="Port number to run vrep remote server", type=int, default=19997)
-    parser.add_argument("--estimator-dir", help="directory for loading/storing estimators", required=True)
-    parser.add_argument("--summary-dir", help="directory for storing stats (tensorboard info)", required=True)
+    parser.add_argument("--estimator-dir", help="directory for loading/storing estimators", default="./estimator")
+    parser.add_argument("--summary-dir", help="directory for storing stats (tensorboard info)", default="summary")
     #parser.add_argument("--agent-name", help="name of the agent")
     parser.add_argument("--stop-agent-learning", help="Is Agent learning", action="store_true")
     parser.add_argument("--num-train-steps", help="max num of training steps", type=int, default=1000000)
@@ -141,6 +141,10 @@ def getArgParser():
     parser.add_argument("--test-freq", help="Testing frequency (per number of rollout steps)", type=int, default=5000)
     parser.add_argument("--normalize-states", help="If normalize states", action="store_true")
     parser.add_argument("--normalize-returns", help="If normalize returns", action="store_true")
+
+    # Config file
+    parser.add_argument("--config-json", help="Optional configuration file. (Config arguments overwrites command line)")
+
 
     parser.set_defaults(stop_agent_learning=False)
     parser.set_defaults(render_env=False)
