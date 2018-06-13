@@ -715,6 +715,7 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
     MAX_STEP = 400
     action_space = Box((7,), (-1.0,), (1.0,))
     observation_space = Box((40,), (-999.0,), (999.0,))
+    reward_space = Box((1,), (-5.0,), (5.0,))
 
     def __init__(self, port=19997, init_cup_pos=None, init_cup_orient=None, init_tg_cup_pos=None,
             init_tg_cup_orient=None,
@@ -1086,6 +1087,10 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
                                 (action[:, 6] == 1).squeeze()] = 1
 
         reward += premature_closing_penalty + capture_reward
+
+        # Cap reward to reward hi and reward lo:
+        reward[(reward > self.reward_space.high[0])] = self.reward_space.high[0]
+        reward[(reward < self.reward_space.low[0])] = self.reward_space.low[0]
         return np.array(reward).reshape((-1, 1))
 
     def _reachedGoalState(self, state):
