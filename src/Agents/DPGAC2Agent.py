@@ -1209,7 +1209,6 @@ class ModelBasedAgent(AgentBase):
         for j in range(self._horizon_length):
             if num_rollout <= 0:
                 break
-            # TODO: Remove hard coded max velocity
             #print(self._env.action_space.shape[0])
             #print(num_rollout)
             actions = generateRandomAction(self._env.action_space.high[0], self._env.action_space.shape[0] *

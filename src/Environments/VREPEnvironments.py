@@ -707,18 +707,18 @@ class VREPPushTask7DoFSparseRewardsIKEnvironment(VREPPushTask7DoFSparseRewardsEn
     pass
 
 
-class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
-    DEFAULT_CUP_POSITION = [0.0, 0.5, 0.062]
+class VREPGraspTask7DoFEnvironment(VREPEnvironment):
+    DEFAULT_CUP_POSITION = [0.0, 0.5, 0.22]
     DEFAULT_CUP_ORIENTATION = [0., 0., 0.]
-    DEFAULT_TARGET_CUP_POSITION = [0.0, 0.5, 0.5]
+    DEFAULT_TARGET_CUP_POSITION = [0.0, 0.5, 0.35]
     DEFAULT_TARGET_CUP_ORIENTATION = [0., -np.pi/2., 0.]
-    MAX_STEP = 600
+    MAX_STEP = 400
     action_space = Box((7,), (-1.0,), (1.0,))
     observation_space = Box((40,), (-999.0,), (999.0,))
 
     def __init__(self, port=19997, init_cup_pos=None, init_cup_orient=None, init_tg_cup_pos=None,
             init_tg_cup_orient=None,
-                mico_model_path="models/robots/non-mobile/MicoRobot7DoF.ttm"):
+                mico_model_path="models/robots/non-mobile/MicoRobot7DoF2.ttm"):
         super().__init__(port)
         self._init_cup_pos = init_cup_pos if not init_cup_pos is None else\
                                 VREPGraspTask7DoFSparseRewardsEnvironment.DEFAULT_CUP_POSITION
@@ -779,6 +779,13 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
         """
             TODO: Refactor away arguments
             Return the state as an array of shape (40, )
+
+            0-6:        joint_vel
+            6-12:       joint_pos
+            12-18:      gripper_pose
+            18-27:      spots to gripper vecs(3): bot, l, r
+            27-36:      target to spots vecs(3): bot, l, r
+            36-40:      gripper_vel + gripper_pos
         """
         #print("PARENT 1")
         current_vel = np.array([0, 0, 0, 0, 0, 0], dtype='float')
@@ -972,10 +979,11 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
 
         return current_state
 
-    def step(self, actions):
+    def step(self, actions, vels_only=False):
         """
         Execute sequences of actions (None, 7) in the environment
         Return sequences of subsequent states and rewards
+        1 = close; -1 = open
 
         Args
         -------
@@ -990,8 +998,17 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
         """
         next_states = []
         rewards = []
+        corrected_actions = np.copy(actions)
         for i in range(actions.shape[0]):
-            current_vel = self.state[:6] + actions[i, :6]
+            if vels_only:
+                current_vel = actions[i, :6]
+                corrected_actions[i, :6] = current_vel - self.state[:6]
+
+                #actions[i, :6] = current_vel - self.state[:6]
+            else:
+                current_vel = self.state[:6] + actions[i, :6]
+            #print("Target vel")
+            #print(current_vel)
             vrep.simxPauseCommunication(self.client_ID, 1)
             for j in range(6):
                 # Cap at max velocity
@@ -1021,6 +1038,8 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
 
         next_states = np.concatenate(next_states, axis=0)
         rewards = np.concatenate(rewards, axis=0)
+        if vels_only:
+            return next_states, rewards, self._isDone(), None, corrected_actions
         return next_states, rewards, self._isDone(), None
 
     def getRewards(self, state, action, next_state):
@@ -1035,35 +1054,106 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPEnvironment):
         -------
         reward:  array(batch_size, 1)
 
-        NOTE: Rewards should be non-negative
         NOTE: The reward is calculated in terms of the next_state instead of current state.
+        The reward has two stages:
+            1. If the gripper base is within a certain distance to the three markers it obtains a ONE-TIME reward;
+            2. AFTER the first reward is collected, if the three marksers are within a certain distance to their
+            targets then the agent obtains the filnal reward.
         """
         state = state.reshape(-1, VREPGraspTask7DoFSparseRewardsEnvironment.observation_space.shape[0])
         batch_size = state.shape[0]
         action = action.reshape(batch_size, -1)
         next_state = next_state.reshape(batch_size, -1)
-        tg_spot_bot_dist = np.sqrt(np.sum(np.square(next_state[:, 18:21])))
-        tg_spot_l_dist = np.sqrt(np.sum(np.square(next_state[:, 21:24])))
-        tg_spot_r_dist = np.sqrt(np.sum(np.square(next_state[:, 24:27])))
-        if tg_spot_bot_dist + tg_spot_l_dist + tg_spot_r_dist <= 0.1:
-            reward = 1
-        else:
-            reward = -0.01
+
+        gripper_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 18:21]), axis=1))
+        gripper_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 21:24]), axis=1))
+        gripper_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 24:27]), axis=1))
+        tg_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 27:30]), axis=1))
+        tg_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 30:33]), axis=1))
+        tg_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 33:36]), axis=1))
+        #print("{}, {}, {}".format(tg_spot_bot_dist, tg_spot_l_dist, tg_spot_r_dist))
+        gripper_spot_dist = np.mean([gripper_spot_bot_dist, gripper_spot_l_dist, gripper_spot_r_dist], axis=0)
+        tg_spot_dist = np.mean([tg_spot_bot_dist, tg_spot_l_dist, tg_spot_r_dist], axis=0)
+        reward = -(gripper_spot_dist + tg_spot_dist)
+        # Penalise when gripper is far from the cup and is closing
+        premature_closing_penalty = np.zeros_like(reward)
+        premature_closing_penalty[(gripper_spot_dist >= .15).squeeze() &
+                                (action[:, 6] == 1).squeeze()] = -1
+
+        capture_reward = np.zeros_like(reward)
+        # Extra reward when gripper is very close to the cup and is closing
+        capture_reward[(gripper_spot_dist <= .12).squeeze() &
+                                (action[:, 6] == 1).squeeze()] = 1
+
+        reward += premature_closing_penalty + capture_reward
         return np.array(reward).reshape((-1, 1))
 
     def _reachedGoalState(self, state):
         """
         If state has reached goal state
         """
-        tg_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 18:21]), axis=1))
-        tg_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 21:24]), axis=1))
-        tg_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 24:27]), axis=1))
-        return (tg_spot_bot_dist + tg_spot_l_dist + tg_spot_r_dist <= 0.1).squeeze()
+        tg_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 27:30]), axis=1))
+        tg_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 30:33]), axis=1))
+        tg_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 33:36]), axis=1))
+        #print("{}, {}, {}".format(tg_spot_bot_dist, tg_spot_l_dist, tg_spot_r_dist))
+        min_dist = 0.06
+        return ((tg_spot_bot_dist <= min_dist) & (tg_spot_l_dist <= min_dist) & (tg_spot_r_dist <= min_dist)).squeeze()
 
     def _isDone(self):
         state = self.state.reshape(1, -1)
         assert(state.shape[1] == self.observation_space.shape[0])
         return  self._reachedGoalState(state) or self._step >= self.MAX_STEP
+
+
+class VREPGraspTask7DoFSparseRewardsEnvironment(VREPGraspTask7DoFEnvironment):
+    def __init__(self, port=19997, init_cup_pos=None, init_cup_orient=None, init_tg_cup_pos=None,
+            init_tg_cup_orient=None,
+                mico_model_path="models/robots/non-mobile/MicoRobot7DoF2.ttm"):
+        super().__init__(port, init_cup_pos, init_cup_orient, init_tg_cup_pos, init_tg_cup_orient,
+                mico_model_path)
+
+    def reset(self):
+        current_state = super().reset()
+        self._approached_cup = False
+        return current_state
+
+    def getRewards(self, state, action, next_state):
+        """
+        Sparse Rewards. Big reward at the end of the episode.
+        Args
+        -------
+        state:   array(state_dim)/array(batch_size, state_dim)
+        action:  array(action_dim)/array(batch_size, action_dim)
+
+        Returns
+        -------
+        reward:  array(batch_size, 1)
+
+        NOTE: The reward is calculated in terms of the next_state instead of current state.
+        The reward has two stages:
+            1. If the gripper base is within a certain distance to the three markers it obtains a ONE-TIME reward;
+            2. AFTER the first reward is collected, if the three marksers are within a certain distance to their
+            targets then the agent obtains the filnal reward.
+        """
+        state = state.reshape(-1, VREPGraspTask7DoFSparseRewardsEnvironment.observation_space.shape[0])
+        batch_size = state.shape[0]
+        action = action.reshape(batch_size, -1)
+        next_state = next_state.reshape(batch_size, -1)
+
+        gripper_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 18:21]), axis=1))
+        gripper_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 21:24]), axis=1))
+        gripper_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 24:27]), axis=1))
+        #print("{}, {}, {}".format(tg_spot_bot_dist, tg_spot_l_dist, tg_spot_r_dist))
+        min_dist = 0.15
+        if not self._approached_cup and \
+            ((gripper_spot_bot_dist <= min_dist) | (gripper_spot_l_dist <= min_dist) | (gripper_spot_r_dist <= min_dist)).squeeze():
+            reward = 5
+            self._approached_cup = True
+        elif self._approached_cup and self._reachedGoalState(next_state):
+            reward = 10
+        else:
+            reward = -0.2
+        return np.array(reward).reshape((-1, 1))
 
 class VREPGraspTask7DoFSparseRewardsIKEnvironment(VREPGraspTask7DoFSparseRewardsEnvironment):
     """
@@ -1250,6 +1340,11 @@ def make(env_name, *args, **kwargs):
                 *args,
                 **kwargs,
                 mico_model_path="models/robots/non-mobile/MicoRobot7DoFIK.ttm",
+                )
+    elif env_name == "VREPGraspTask7DoF":
+        return VREPGraspTask7DoFEnvironment(
+                *args,
+                **kwargs,
                 )
     elif env_name == "VREPGraspTask7DoFSparseRewards":
         return VREPGraspTask7DoFSparseRewardsEnvironment(
