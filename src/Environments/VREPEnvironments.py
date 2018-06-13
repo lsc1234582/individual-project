@@ -1157,6 +1157,7 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPGraspTask7DoFEnvironment):
 
         reward = np.zeros_like(gripper_spot_r_dist) - 0.2
         approached_cup_persist = approached_cup if approached_cup is not None else self._approached_cup
+        approached_cup_persist = np.array(approached_cup_persist).flatten()
 
         reward[approached_cup_persist & self._reachedGoalState(next_state)] = 10
 

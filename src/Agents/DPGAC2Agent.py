@@ -1230,7 +1230,7 @@ class ModelBasedAgent(AgentBase):
             else:
                 horizon_reward[~done_selection] += self._env.getRewards(current_state, actions, next_state[~done_selection])
             # Detect termination, only proceed with non-terminated states
-            done_selection = self._env._reachedGoalState(next_state)
+            done_selection = np.array(self._env._reachedGoalState(next_state)).flatten()
             #assert next_state.shape[0] == num_rollout and next_state.shape[1] == self._model_estimator._state_dim
             #print(done_selection.shape)
             #print(done_selection)
