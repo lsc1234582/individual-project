@@ -693,12 +693,12 @@ class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
         batch_size = state.shape[0]
         action = action.reshape(batch_size, -1)
         next_state = next_state.reshape(batch_size, -1)
-        cube_to_target_dist = np.sqrt(np.sum(np.square(next_state[:, 21:24])))
-        if cube_to_target_dist <= self.CUBOID_SIDE_LENGTH / 2 + 0.1:
-            reward = 1.0
-        else:
-            reward = -0.01
-        return np.array(reward).reshape((-1, 1))
+        cube_to_target_dists = np.sqrt(np.sum(np.square(next_state[:, 21:24]), axis=1))
+        reward = np.zeros_like(cube_to_target_dists) - 0.01
+        reward[(cube_to_target_dists <= self.CUBOID_SIDE_LENGTH / 2 + 0.1).squeeze()] = 1.0
+        reward = reward.reshape((-1, 1))
+        assert reward.shape[0] == batch_size
+        return reward
 
 
 
@@ -722,13 +722,13 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
                 mico_model_path="models/robots/non-mobile/MicoRobot7DoF2.ttm"):
         super().__init__(port)
         self._init_cup_pos = init_cup_pos if not init_cup_pos is None else\
-                                VREPGraspTask7DoFSparseRewardsEnvironment.DEFAULT_CUP_POSITION
+                                VREPGraspTask7DoFEnvironment.DEFAULT_CUP_POSITION
         self._init_cup_orient = init_cup_orient if not init_cup_orient is None else\
-                                VREPGraspTask7DoFSparseRewardsEnvironment.DEFAULT_CUP_ORIENTATION
+                                VREPGraspTask7DoFEnvironment.DEFAULT_CUP_ORIENTATION
         self._init_tg_cup_pos = init_tg_cup_pos if not init_tg_cup_pos is None else\
-                                VREPGraspTask7DoFSparseRewardsEnvironment.DEFAULT_TARGET_CUP_POSITION
+                                VREPGraspTask7DoFEnvironment.DEFAULT_TARGET_CUP_POSITION
         self._init_tg_cup_orient = init_tg_cup_orient if not init_tg_cup_orient is None else\
-                                VREPGraspTask7DoFSparseRewardsEnvironment.DEFAULT_TARGET_CUP_ORIENTATION
+                                VREPGraspTask7DoFEnvironment.DEFAULT_TARGET_CUP_ORIENTATION
         self.mico_model_path = mico_model_path
         self._gripper_closing_vel = -0.04
 
@@ -766,7 +766,7 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
         state_str:          String      Formatted string
         """
         state = state.flatten()
-        assert(state.shape[0] == VREPGraspTask7DoFSparseRewardsEnvironment.observation_space.shape[0])
+        assert(state.shape[0] == VREPGraspTask7DoFEnvironment.observation_space.shape[0])
         state_str = "joint_vel: {}\njoint_angles: {}\ngripper_pos: {}\ngripper_orient: {}\n"
         state_str += "spot_bot_gripper_vec: {}\nspot_l_gripper_vec: {}\nspot_r_gripper_vec: {}\n"
         state_str += "tg_spot_bot_spot_bot_vec: {}\ntg_spot_l_spot_l_vec: {}\ntg_spot_r_spot_r_vec: {}\n"
@@ -1061,7 +1061,7 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
             2. AFTER the first reward is collected, if the three marksers are within a certain distance to their
             targets then the agent obtains the filnal reward.
         """
-        state = state.reshape(-1, VREPGraspTask7DoFSparseRewardsEnvironment.observation_space.shape[0])
+        state = state.reshape(-1, VREPGraspTaskEnvironment.observation_space.shape[0])
         batch_size = state.shape[0]
         action = action.reshape(batch_size, -1)
         next_state = next_state.reshape(batch_size, -1)
@@ -1091,7 +1091,9 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
         # Cap reward to reward hi and reward lo:
         reward[(reward > self.reward_space.high[0])] = self.reward_space.high[0]
         reward[(reward < self.reward_space.low[0])] = self.reward_space.low[0]
-        return np.array(reward).reshape((-1, 1))
+        reward = reward.reshape((-1, 1))
+        assert reward.shape[0] == batch_size
+        return reward
 
     def _reachedGoalState(self, state):
         """
@@ -1122,13 +1124,15 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPGraspTask7DoFEnvironment):
         self._approached_cup = False
         return current_state
 
-    def getRewards(self, state, action, next_state):
+    def getRewards(self, state, action, next_state, approached_cup=None):
         """
         Sparse Rewards. Big reward at the end of the episode.
         Args
         -------
         state:   array(state_dim)/array(batch_size, state_dim)
         action:  array(action_dim)/array(batch_size, action_dim)
+        next_state:   array(state_dim)/array(batch_size, state_dim)
+        approached_cup:          array(batch_size, 1)   NOTE: Only used in model-based
 
         Returns
         -------
@@ -1150,15 +1154,23 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPGraspTask7DoFEnvironment):
         gripper_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 24:27]), axis=1))
         #print("{}, {}, {}".format(tg_spot_bot_dist, tg_spot_l_dist, tg_spot_r_dist))
         min_dist = 0.15
-        if not self._approached_cup and \
-            ((gripper_spot_bot_dist <= min_dist) | (gripper_spot_l_dist <= min_dist) | (gripper_spot_r_dist <= min_dist)).squeeze():
-            reward = 5
-            self._approached_cup = True
-        elif self._approached_cup and self._reachedGoalState(next_state):
-            reward = 10
-        else:
-            reward = -0.2
-        return np.array(reward).reshape((-1, 1))
+
+        reward = np.zeros_like(gripper_spot_r_dist) - 0.2
+        approached_cup_persist = approached_cup if approached_cup is not None else self._approached_cup
+
+        reward[approached_cup_persist & self._reachedGoalState(next_state)] = 10
+
+        approached = ((gripper_spot_bot_dist <= min_dist) | (gripper_spot_l_dist <= min_dist) | (gripper_spot_r_dist\
+            <= min_dist)).squeeze()
+        reward[~approached_cup_persist & approached] = 5
+        approached_cup_persist = approached | approached_cup_persist
+
+        reward = reward.reshape((-1, 1))
+        assert reward.shape[0] == batch_size
+        if approached_cup is None:
+            self._approached_cup = approached_cup_persist
+            return reward
+        return reward, approached_cup_persist
 
 class VREPGraspTask7DoFSparseRewardsIKEnvironment(VREPGraspTask7DoFSparseRewardsEnvironment):
     """
