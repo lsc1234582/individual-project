@@ -309,6 +309,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     def _do_load(self, f):
         states = super(PrioritizedReplayBuffer, self)._do_load(f)
 
+        new_seg_tress = False
         self._calculateCapacity(self._maxsize)
         if "_alpha" in states:
             self._alpha = states["_alpha"]
@@ -316,16 +317,22 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self._it_sum = states["_it_sum"]
         else:
             self._it_sum = SumSegmentTree(self._it_capacity)
+            new_seg_tress = True
         if "_it_min" in states:
             self._it_min = states["_it_min"]
         else:
             self._it_min = MinSegmentTree(self._it_capacity)
+            new_seg_tress = True
         if "_max_priority" in states:
             self._max_priority = states["_max_priority"]
         if "_it_capacity" in states:
             self._it_capacity = states["_it_capacity"]
 
         self._loaded_storage_size = len(self._storage)
+        # Initialise segment trees to contain max_priority initially
+        for i in range(self._loaded_storage_size):
+            self._it_sum[i] = self._max_priority ** self._alpha
+            self._it_min[i] = self._max_priority ** self._alpha
 
         return states
 
