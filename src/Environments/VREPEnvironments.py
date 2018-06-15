@@ -1061,7 +1061,7 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
             2. AFTER the first reward is collected, if the three marksers are within a certain distance to their
             targets then the agent obtains the filnal reward.
         """
-        state = state.reshape(-1, VREPGraspTaskEnvironment.observation_space.shape[0])
+        state = state.reshape(-1, VREPGraspTask7DoFEnvironment.observation_space.shape[0])
         batch_size = state.shape[0]
         action = action.reshape(batch_size, -1)
         next_state = next_state.reshape(batch_size, -1)
