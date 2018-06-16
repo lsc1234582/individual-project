@@ -1041,7 +1041,7 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
             next_state = self.getCurrentState()
             next_states.append(next_state.reshape(1, -1))
             rewards.append(self.getRewards(self.state, actions, next_state))
-            rewards.append(self.getRewardsDense(self.state, actions, next_state))
+            rewards_dense.append(self.getRewardsDense(self.state, actions, next_state))
             self._step += 1
             self.state = np.copy(next_state)
             if self._isDone():
@@ -1051,7 +1051,7 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
         rewards = np.concatenate(rewards, axis=0)
         if vels_only:
             return next_states, rewards, self._isDone(), None, corrected_actions
-        return next_states, rewards, rewards_dense self._isDone(), None
+        return next_states, rewards, rewards_dense, self._isDone(), None
 
     def getRewardsDense(self, state, action, next_state):
         """
