@@ -538,6 +538,7 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
 
         next_states = np.concatenate(next_states, axis=0)
         rewards = np.concatenate(rewards, axis=0)
+        rewards_dense = np.concatenate(rewards_dense, axis=0)
         return next_states, rewards, rewards_dense, self._isDone(), None
 
 class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
@@ -1056,8 +1057,9 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
 
         next_states = np.concatenate(next_states, axis=0)
         rewards = np.concatenate(rewards, axis=0)
+        rewards_dense = np.concatenate(rewards_dense, axis=0)
         if vels_only:
-            return next_states, rewards, self._isDone(), None, corrected_actions
+            return next_states, rewards, rewards_dense, self._isDone(), None, corrected_actions
         return next_states, rewards, rewards_dense, self._isDone(), None
 
     def getRewardsDense(self, state, action, next_state):
