@@ -252,7 +252,7 @@ class VREPPushTaskEnvironment(VREPEnvironment):
         #return np.tanh(-(np.sqrt(np.sum(np.square(state[:1]))))/10.0) + 1.0
 
     def getRewards(self, state, action, next_state):
-        return self.getRewardsDense(self, state, action, next_state)
+        return self.getRewardsDense(state, action, next_state)
 
     def _reachedGoalState(self, state):
         """
@@ -373,7 +373,7 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
         return super().getRewards(state[:, :24], action[:, :6], next_state[:, :24])
 
     def getRewards(self, state, action, next_state):
-        return self.getRewardsDense(self, state, action, next_state)
+        return self.getRewardsDense(state, action, next_state)
 
     def getStateString(self, state):
         """
@@ -1106,7 +1106,7 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
         return reward
 
     def getRewards(self, state, action, next_state):
-        return self.getRewardsDense(self, state, action, next_state)
+        return self.getRewardsDense(state, action, next_state)
 
     def _reachedGoalState(self, state):
         """
