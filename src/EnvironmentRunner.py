@@ -79,8 +79,9 @@ def runEnvironmentWithAgent(args):
             if done:
                 observation = env.reset()
                 reward = np.array([0.0])
+                reward_dense = np.array([0.0])
                 done = False
-                action, done, is_test_episode, step = agent.act(observation, reward, done, episode_start,
+                action, done, is_test_episode, step = agent.act(observation, reward, reward_dense, done, episode_start,
                         train_episode_num, global_step_num, is_learning=(not args.stop_agent_learning))
                 if not is_test_episode:
                     train_episode_num += 1
