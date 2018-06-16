@@ -370,10 +370,17 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
         batch_size = state.shape[0]
         action = action.reshape(batch_size, -1)
         next_state = next_state.reshape(batch_size, -1)
-        return super().getRewards(state[:, :24], action[:, :6], next_state[:, :24])
+        state = state[:, :24]
+        action = action[:, :6]
+        next_state = next_state[:, :24]
+        return (-(np.sqrt(np.sum(np.square(state[:, -6:-3]), axis=1)) + np.sqrt(np.sum(np.square(state[:, -3:]),
+            axis=1)))).reshape(batch_size, 1)
+        #return -(np.sqrt(np.sum(np.square(action))))
+        #return np.tanh(-(np.sqrt(np.sum(np.square(state[:1]))))/10.0) + 1.0
 
     def getRewards(self, state, action, next_state):
         return self.getRewardsDense(state, action, next_state)
+
 
     def getStateString(self, state):
         """
