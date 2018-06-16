@@ -49,12 +49,14 @@ class AgentBase(object):
         self._num_rewards_to_average = 100
 
         self._episode_return = 0
+        self._episode_return_dense = 0
         self._episode_returns = collections.deque(maxlen=self._num_rewards_to_average)
         # Rollout stats related
         # Our objective metric
         self._best_average_episode_return = None
         self._stats_start_time = time.time()
         self._stats_epoch_episode_returns = []
+        self._stats_epoch_episode_returns_dense = []
         self._stats_epoch_episode_steps = []
         self._stats_epoch_actions = []
         self._stats_tot_steps = 0
@@ -126,6 +128,7 @@ class AgentBase(object):
         # Epoch stats
         stats_tot_duration = time.time() - self._stats_start_time
         stats['epoch/episode_return'] = np.mean(self._stats_epoch_episode_returns)
+        stats['epoch/episode_return_dense'] = np.mean(self._stats_epoch_episode_returns_dense)
         stats['epoch/episode_steps'] = np.mean(self._stats_epoch_episode_steps)
         # TODO: Again, full action vector instead of reduced value?
         stats['epoch/actions_mean'] = np.mean(self._stats_epoch_actions)
@@ -134,6 +137,7 @@ class AgentBase(object):
             stats["test/success_rate"] = self._last_success_rate
         # Clear epoch statistics.
         self._stats_epoch_episode_returns = []
+        self._stats_epoch_episode_returns_dense = []
         self._stats_epoch_episode_steps = []
         self._stats_epoch_actions = []
 
@@ -222,7 +226,7 @@ class AgentBase(object):
             self._state_rms.update(np.array([self._last_state]))
 
 
-    def act(self, current_state, last_reward, termination, episode_start_num, episode_num, global_step_num, is_learning=False):
+    def act(self, current_state, last_reward, last_reward_dense, termination, episode_start_num, episode_num, global_step_num, is_learning=False):
         """
         NB: Although the shape of the inputs are all batch version, this function only deals with single-step
         transition. This means the "batch_size" is always 1
@@ -258,6 +262,7 @@ class AgentBase(object):
 
         # Book keeping
         self._episode_return += last_reward.squeeze()
+        self._episode_return_dense += last_reward_dense.squeeze()
         self._step += 1
         # Set a limit on how long each episode is, despite what the environment responds.
         if self._step >= self._max_episode_length:
@@ -299,6 +304,7 @@ class AgentBase(object):
                 # Record cumulative reward of trial
                 self._episode_returns.append(self._episode_return)
                 self._stats_epoch_episode_returns.append(self._episode_return)
+                self._stats_epoch_episode_returns_dense.append(self._episode_return_dense)
                 self._stats_epoch_episode_steps.append(self._step)
                 average = np.mean(self._episode_returns)
 
@@ -340,6 +346,7 @@ class AgentBase(object):
 
             # Reset for new episode
             self._episode_return = 0.0
+            self._episode_return_dense = 0.0
             self._step = 0
             self._last_state = None
             self._last_action = None

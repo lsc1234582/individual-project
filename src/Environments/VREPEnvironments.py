@@ -227,7 +227,7 @@ class VREPPushTaskEnvironment(VREPEnvironment):
 
         return current_state
 
-    def getRewards(self, state, action, next_state):
+    def getRewardsDense(self, state, action, next_state):
         """
             Return the sum of the Euclidean distance between gripper and cuboid and the Euclidean distance between cuboid and targetPlane.
             Args
@@ -250,6 +250,9 @@ class VREPPushTaskEnvironment(VREPEnvironment):
             axis=1)))).reshape(batch_size, 1)
         #return -(np.sqrt(np.sum(np.square(action))))
         #return np.tanh(-(np.sqrt(np.sum(np.square(state[:1]))))/10.0) + 1.0
+
+    def getRewards(self, state, action, next_state):
+        return self.getRewardsDense(self, state, action, next_state)
 
     def _reachedGoalState(self, state):
         """
@@ -348,7 +351,7 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
                 vrep.simx_opmode_discontinue)
         _, _ = vrep.simxGetJointPosition(self.client_ID, self.gripper_f2_handle, vrep.simx_opmode_discontinue)
 
-    def getRewards(self, state, action, next_state):
+    def getRewardsDense(self, state, action, next_state):
         """
             Return the sum of the Euclidean distance between gripper and cuboid and the Euclidean distance between cuboid and targetPlane.
             Args
@@ -368,6 +371,9 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
         action = action.reshape(batch_size, -1)
         next_state = next_state.reshape(batch_size, -1)
         return super().getRewards(state[:, :24], action[:, :6], next_state[:, :24])
+
+    def getRewards(self, state, action, next_state):
+        return self.getRewardsDense(self, state, action, next_state)
 
     def getStateString(self, state):
         """
@@ -491,6 +497,7 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
         """
         next_states = []
         rewards = []
+        rewards_dense = []
         for i in range(actions.shape[0]):
             current_vel = self.state[:6] + actions[i, :6]
             vrep.simxPauseCommunication(self.client_ID, 1)
@@ -516,6 +523,7 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
                     self.target_plane_handle)
             next_states.append(next_state.reshape(1, -1))
             rewards.append(self.getRewards(self.state, actions, next_state))
+            rewards_dense.append(self.getRewardsDense(self.state, actions, next_state))
             self._step += 1
             self.state = np.copy(next_state)
             if self._isDone():
@@ -523,7 +531,7 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
 
         next_states = np.concatenate(next_states, axis=0)
         rewards = np.concatenate(rewards, axis=0)
-        return next_states, rewards, self._isDone(), None
+        return next_states, rewards, rewards_dense, self._isDone(), None
 
 class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
     """
@@ -664,7 +672,7 @@ class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
             rewards = np.concatenate(rewards, axis=0)
         else:
             next_states = None
-        return next_states, rewards, self._isDone(), None
+        return next_states, rewards, rewards, self._isDone(), None
 
 
 class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
@@ -999,6 +1007,7 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
         """
         next_states = []
         rewards = []
+        rewards_dense = []
         corrected_actions = np.copy(actions)
         for i in range(actions.shape[0]):
             if vels_only:
@@ -1032,6 +1041,7 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
             next_state = self.getCurrentState()
             next_states.append(next_state.reshape(1, -1))
             rewards.append(self.getRewards(self.state, actions, next_state))
+            rewards.append(self.getRewardsDense(self.state, actions, next_state))
             self._step += 1
             self.state = np.copy(next_state)
             if self._isDone():
@@ -1041,9 +1051,9 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
         rewards = np.concatenate(rewards, axis=0)
         if vels_only:
             return next_states, rewards, self._isDone(), None, corrected_actions
-        return next_states, rewards, self._isDone(), None
+        return next_states, rewards, rewards_dense self._isDone(), None
 
-    def getRewards(self, state, action, next_state):
+    def getRewardsDense(self, state, action, next_state):
         """
         Sparse Rewards. Big reward at the end of the episode.
         Args
@@ -1094,6 +1104,9 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
         reward = reward.reshape((-1, 1))
         assert reward.shape[0] == batch_size
         return reward
+
+    def getRewards(self, state, action, next_state):
+        return self.getRewardsDense(self, state, action, next_state)
 
     def _reachedGoalState(self, state):
         """
