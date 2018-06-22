@@ -148,11 +148,11 @@ class TD3Agent(AgentBase):
             assert(self._replay_buffer._it_min.min() > 0)
 
             #TODO: Remove DEBUG
-            if self._stats_tot_steps % self._debug_freq == 0:
-                with open("DEBUG_rb_freq.pkl", "wb") as f:
-                    pk.dump(self._replay_buffer.debug_get_sample_freq(), f)
-                with open("DEBUG_rb_priorities.pkl", "wb") as f:
-                    pk.dump(self._replay_buffer.debug_get_priorities(), f)
+            #if self._stats_tot_steps % self._debug_freq == 0:
+            #    with open("DEBUG_rb_freq.pkl", "wb") as f:
+            #        pk.dump(self._replay_buffer.debug_get_sample_freq(), f)
+            #    with open("DEBUG_rb_priorities.pkl", "wb") as f:
+            #        pk.dump(self._replay_buffer.debug_get_priorities(), f)
 
             # Early stop
             if np.isnan(ve_loss) or np.isnan(ve_loss2):

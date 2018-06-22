@@ -15,9 +15,11 @@ class DPGMultiPerceptronPolicyEstimator(object):
     """
 
     def __init__(self, sess, state_rms, state_dim, action_dim, h_layer_shapes, learning_rate, action_bound, state_range, tau,
-            minibatch_size, imitation_learning_rate=-1, imitation_minibatch_size=-1, scope="policy_estimator"):
+            minibatch_size, imitation_learning_rate=-1, imitation_minibatch_size=-1, scope="policy_estimator",
+            goal_dim=0):
         self._sess = sess
         self._state_dim = state_dim
+        self._goal_dim = goal_dim
         self._action_dim = action_dim
         self._h_layer_shapes = h_layer_shapes
         self._action_bound = action_bound
@@ -93,7 +95,7 @@ class DPGMultiPerceptronPolicyEstimator(object):
 
     def _create_actor_network(self, scope):
         with tf.name_scope(scope):
-            inputs = tflearn.input_data(shape=(None, self._state_dim), name="inputs")
+            inputs = tflearn.input_data(shape=(None, self._state_dim + self._goal_dim), name="inputs")
             # Normalize input(states)
             normalized_inputs = tf.clip_by_value(normalize(inputs, self._state_rms), self._state_range[0],
                     self._state_range[1])

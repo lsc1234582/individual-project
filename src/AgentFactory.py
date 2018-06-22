@@ -15,6 +15,7 @@ from DPGAC2WithDemoPEH2VEH2 import MakeDPGAC2WithDemoPEH2VEH2
 #from DPGAC2WithMultiPModelAndDemoPEH2VEH2MEH2 import MakeDPGAC2WithMultiPModelAndDemoPEH2VEH2MEH2
 from DPGAC2WithPrioritizedRBPEH2VEH2 import MakeDPGAC2WithPrioritizedRBPEH2VEH2
 from TD3PEH2VEH2 import MakeTD3PEH2VEH2
+from TD3HERPEH2VEH2 import MakeTD3HERPEH2VEH2
 from ModelBasedMEH2 import MakeModelBasedMEH2
 
 AGENTS = {
@@ -26,6 +27,7 @@ AGENTS = {
         "DPGAC2WithPrioritizedRBPEH2VEH2": MakeDPGAC2WithPrioritizedRBPEH2VEH2,
         "ModelBasedMEH2": MakeModelBasedMEH2,
         "TD3PEH2VEH2": MakeTD3PEH2VEH2,
+        "TD3HERPEH2VEH2": MakeTD3HERPEH2VEH2,
         }
 
 AGENT_PARSER = {

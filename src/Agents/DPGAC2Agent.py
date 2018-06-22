@@ -331,7 +331,7 @@ class AgentBase(object):
 
                 # Save replay buffer
                 if (self._replay_buffer_save_dir is not None) and \
-                    (episode_num_this_run % self._replay_buffer_save_freq == 0):
+                    (self._stats_tot_steps % self._replay_buffer_save_freq == 0):
                     logger.info("Saving replay buffer")
                     self.saveReplayBuffer(self._replay_buffer_save_dir)
                 # Check for convergence
@@ -1202,7 +1202,7 @@ class ModelBasedAgent(AgentBase):
         return stats, aux
 
     def _getBestActionAux(self, num_rollout, batch_size, state):
-        from Environments.VREPEnvironments import VREPGraspTask7DoFSparseRewardsEnvironment
+        #from Environments.VREPEnvironments import VREPGraspTask7DoFSparseRewardsEnvironment
         current_state = np.concatenate([np.copy(state) for _ in range(num_rollout)], axis=0)
         next_state = np.copy(current_state)
 
@@ -1215,8 +1215,8 @@ class ModelBasedAgent(AgentBase):
         horizon_reward = np.zeros((num_rollout, 1))
         done_selection = np.array([False for _ in range(num_rollout)])
         # TODO: Remove hardcoded logic
-        if self._env.__class__ is VREPGraspTask7DoFSparseRewardsEnvironment:
-            approached_cup_persist = np.array([False for _ in range(num_rollout)])
+        #if self._env.__class__ is VREPGraspTask7DoFSparseRewardsEnvironment:
+        #    approached_cup_persist = np.array([False for _ in range(num_rollout)])
         for j in range(self._horizon_length):
             if num_rollout <= 0:
                 break
@@ -1229,13 +1229,14 @@ class ModelBasedAgent(AgentBase):
             # Proceed to next state
             assert current_state.shape[0] == num_rollout and current_state.shape[1] == self._model_estimator._state_dim
             next_state[~done_selection]= current_state + self._model_estimator.predict(current_state, actions)
-            if self._env.__class__ is VREPGraspTask7DoFSparseRewardsEnvironment:
-                reward, approached_cup_persist_ = self._env.getRewards(current_state, actions,
-                        next_state[~done_selection], approached_cup_persist[~done_selection])
-                horizon_reward[~done_selection] += reward
-                approached_cup_persist[~done_selection] = approached_cup_persist_
-            else:
-                horizon_reward[~done_selection] += self._env.getRewards(current_state, actions, next_state[~done_selection])
+            #if self._env.__class__ is VREPGraspTask7DoFSparseRewardsEnvironment:
+            #    reward, approached_cup_persist_ = self._env.getRewards(current_state, actions,
+            #            next_state[~done_selection], approached_cup_persist[~done_selection])
+            #    horizon_reward[~done_selection] += reward
+            #    approached_cup_persist[~done_selection] = approached_cup_persist_
+            #else:
+            #    horizon_reward[~done_selection] += self._env.getRewards(current_state, actions, next_state[~done_selection])
+            horizon_reward[~done_selection] += self._env.getRewards(current_state, actions, next_state[~done_selection])
             # Detect termination, only proceed with non-terminated states
             done_selection = np.array(self._env._reachedGoalState(next_state)).flatten()
             #assert next_state.shape[0] == num_rollout and next_state.shape[1] == self._model_estimator._state_dim

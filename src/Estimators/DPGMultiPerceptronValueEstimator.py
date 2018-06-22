@@ -15,9 +15,10 @@ class DPGMultiPerceptronValueEstimator(object):
 
     def __init__(self, sess, state_rms, return_rms, state_dim, action_dim, h_layer_shapes, state_range, return_range,
             learning_rate, tau, num_actor_vars, lambda2=0.1,
-            scope="value_estimator"):
+            scope="value_estimator", goal_dim=0):
         self._sess = sess
         self._state_dim = state_dim
+        self._goal_dim = goal_dim
         self._action_dim = action_dim
         self._h_layer_shapes = h_layer_shapes
         self._state_range = state_range
@@ -122,7 +123,7 @@ class DPGMultiPerceptronValueEstimator(object):
 
     def _create_critic_network(self, scope):
         with tf.name_scope(scope):
-            inputs = tflearn.input_data(shape=(None, self._state_dim), name="inputs")
+            inputs = tflearn.input_data(shape=(None, self._state_dim + self._goal_dim), name="inputs")
             action = tflearn.input_data(shape=(None, self._action_dim), name="action")
             # Normalized input(states)
             normalized_inputs = tf.clip_by_value(normalize(inputs, self._state_rms), self._state_range[0],
