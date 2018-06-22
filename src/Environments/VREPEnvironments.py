@@ -386,7 +386,7 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
         next_state = next_state[:, :24]
         if goal is None:
             goal = np.array([self._goal for _ in range(batch_size)])
-        goal = goal.reshape((batch_size, 6))
+        goal = goal.reshape((batch_size, self.goal_space.shape[0]))
         reward = (-(np.sqrt(np.sum(np.square(state[:, -6:-3] - goal[:, -6:-3]), axis=1)) + \
                 np.sqrt(np.sum(np.square(state[:, -3:] - goal[:, -3:]), axis=1)))).reshape(batch_size, 1)
         return np.clip(reward, self.reward_space.low[0], self.reward_space.high[0])
@@ -731,8 +731,13 @@ class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
             goal = np.array([self._goal for _ in range(batch_size)])
         goal = goal.reshape((batch_size, 6))
         cube_to_goal_dists = np.sqrt(np.sum(np.square(next_state[:, 21:24] - goal[:, -3:]), axis=1))
-        reward = np.zeros_like(cube_to_goal_dists) - 0.01
-        reward[(cube_to_goal_dists <= self.CUBOID_SIDE_LENGTH / 2 + 0.1).squeeze()] = 1.0
+        reward = np.zeros_like(cube_to_goal_dists) - 0.1
+        reward[(cube_to_goal_dists <= self.CUBOID_SIDE_LENGTH / 2 + 0.1).squeeze()] = 0.0
+        #print("reachedGoal")
+        #print(cube_to_goal_dists)
+        ##print(tg_spot_l_dist)
+        ##print(tg_spot_r_dist)
+        #print("reachedGoal---")
         reward = reward.reshape((-1, 1))
         assert reward.shape[0] == batch_size
         return reward
@@ -1166,13 +1171,21 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
         batch_size = state.shape[0]
         if goal is None:
             goal = np.array([self._goal for _ in range(batch_size)])
-        goal = goal.reshape((batch_size, 6))
-        tg_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 27:30] - goal[:, -3:]), axis=1))
-        tg_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 30:33] - goal[:, -3:]), axis=1))
-        tg_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 33:36] - goal[:, -3:]), axis=1))
+        goal = goal.reshape((batch_size, self.goal_space.shape[0]))
+        #tg_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 27:30] - goal[:, -3:]), axis=1))
+        #tg_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 30:33] - goal[:, -3:]), axis=1))
+        #tg_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 33:36] - goal[:, -3:]), axis=1))
+        tg_spot = np.mean([state[:, 27:30], state[:, 30:33], state[:, 33:36]], axis=0)
+        tg_spot_dist = np.sqrt(np.sum(np.square(tg_spot - goal[:, -3:]), axis=1))
         #print("{}, {}, {}".format(tg_spot_bot_dist, tg_spot_l_dist, tg_spot_r_dist))
+        #print("reachedGoal")
+        #print(tg_spot_dist)
+        ##print(tg_spot_l_dist)
+        ##print(tg_spot_r_dist)
+        #print("reachedGoal---")
         min_dist = 0.06
-        return ((tg_spot_bot_dist <= min_dist) & (tg_spot_l_dist <= min_dist) & (tg_spot_r_dist <= min_dist)).squeeze()
+        #return ((tg_spot_bot_dist <= min_dist) & (tg_spot_l_dist <= min_dist) & (tg_spot_r_dist <= min_dist)).squeeze()
+        return (tg_spot_dist <= min_dist).squeeze()
 
     def _isDone(self):
         state = self.state.reshape(1, -1)
@@ -1181,6 +1194,7 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
 
 
 class VREPGraspTask7DoFSparseRewardsEnvironment(VREPGraspTask7DoFEnvironment):
+
     def __init__(self, port=19997, init_cup_pos=None, init_cup_orient=None, init_tg_cup_pos=None,
             init_tg_cup_orient=None,
                 mico_model_path="models/robots/non-mobile/MicoRobot7DoF2.ttm"):
@@ -1221,7 +1235,7 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPGraspTask7DoFEnvironment):
         gripper_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 21:24]), axis=1))
         gripper_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 24:27]), axis=1))
         #print("{}, {}, {}".format(tg_spot_bot_dist, tg_spot_l_dist, tg_spot_r_dist))
-        min_dist = 0.15
+        #min_dist = 0.15
 
         reward = np.zeros_like(gripper_spot_r_dist) - 0.2
         #approached_cup_persist = approached_cup if approached_cup is not None else self._approached_cup
@@ -1234,7 +1248,7 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPGraspTask7DoFEnvironment):
         #reward[~approached_cup_persist & approached] = 5
         #approached_cup_persist = approached | approached_cup_persist
 
-        reward[self._reachedGoalState(next_state, goal)] = 10
+        reward[self._reachedGoalState(next_state, goal)] = 0
         reward = reward.reshape((-1, 1))
         assert reward.shape[0] == batch_size
         #if approached_cup is None:

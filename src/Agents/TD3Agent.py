@@ -119,6 +119,7 @@ class TD3Agent(AgentBase):
                     current_state_batch, action_batch, td_target, weights)
             _, td_error2, ve_weighted_loss2, ve_loss2 = self._value_estimator2.update_with_weights(
                     current_state_batch, action_batch, td_target, weights)
+            self._stats_epoch_critic_loss.append(ve_loss)
 
             # NB: Use td_target because it's not pure estimate (reward as samples)
             if self._normalize_returns:

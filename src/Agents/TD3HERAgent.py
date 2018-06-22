@@ -196,6 +196,7 @@ class TD3HERAgent(AgentBase):
                     current_state_goal_batch, action_batch, td_target, weights)
             _, td_error2, ve_weighted_loss2, ve_loss2 = self._value_estimator2.update_with_weights(
                     current_state_goal_batch, action_batch, td_target, weights)
+            self._stats_epoch_critic_loss.append(ve_loss)
 
             # NB: Use td_target because it's not pure estimate (reward as samples)
             if self._normalize_returns:
@@ -340,7 +341,13 @@ class TD3HERAgent(AgentBase):
                 new_goal = self._env.extractGoal(last_State)
                 for i in range(len(self._episode_experience)):
                     s, a, _, ns, d, _ = self._episode_experience[i]
-                    r = self._env.getRewards(s, a, ns, new_goal)
+                    r = self._env.getRewards(s, a, ns, goal=new_goal)
+                    #print("REPLAY BUFFER")
+                    #print(self._env.getStateString(s))
+                    #print(a)
+                    #print(r)
+                    #print(self._env.getStateString(ns))
+                    #print(new_goal)
                     self._replay_buffer.add(s, a, r.squeeze(), ns, d, new_goal.squeeze().copy())
 
                 # Record cumulative reward of trial
