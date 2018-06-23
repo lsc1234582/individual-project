@@ -1427,6 +1427,27 @@ def make(env_name, *args, **kwargs):
                 *args,
                 **kwargs,
                 mico_model_path="models/robots/non-mobile/MicoRobot7DoF.ttm")
+    elif env_name == "VREPPushTask7DoF2":
+        return VREPPushTask7DoFEnvironment(
+                *args,
+                **kwargs,
+                init_cb_pos=[0.3, -0.5, 0.05],
+                init_tg_pos=[0.3, -0.8, 0.002],
+                mico_model_path="models/robots/non-mobile/MicoRobot7DoF.ttm")
+    elif env_name == "VREPPushTask7DoF3":
+        return VREPPushTask7DoFEnvironment(
+                *args,
+                **kwargs,
+                init_cb_pos=[0.55, 0., 0.05],
+                init_tg_pos=[0.8, 0., 0.002],
+                mico_model_path="models/robots/non-mobile/MicoRobot7DoF.ttm")
+    elif env_name == "VREPPushTask7DoF4":
+        return VREPPushTask7DoFEnvironment(
+                *args,
+                **kwargs,
+                init_cb_pos=[-0.55, 0., 0.05],
+                init_tg_pos=[-0.8, 0., 0.002],
+                mico_model_path="models/robots/non-mobile/MicoRobot7DoF.ttm")
     elif env_name == "VREPPushTask7DoFIK":
         return VREPPushTask7DoFIKEnvironment(
                 *args,
