@@ -3,7 +3,7 @@ import numpy as np
 import sys
 import pprint
 sys.path.insert(0, "/home/sicong/Projects/FourthYearProjects/IndividualProject/individual-project/src")
-from Utils import ReplayBuffer
+from Utils.Utils import ReplayBuffer
 
 def injectGaussianNoise(resample_amount, original_rb, enriched_rb, mean, std):
     # Inject zero-mean gaussian noise into the current state, action, reward and next state data

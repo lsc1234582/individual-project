@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
-from Utils import ReplayBuffer
-from Utils import generateRandomAction
+from Utils.Utils import ReplayBuffer
+from Utils.Utils import generateRandomAction
 from EnvironmentFactory import EnvironmentContext
 
 def runEnvironmentWithAgent(args):

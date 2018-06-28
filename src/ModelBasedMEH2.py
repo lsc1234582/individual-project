@@ -8,13 +8,13 @@ import EnvironmentRunner
 #from tensorflow.python import debug as tf_debug
 from Estimators.MultiPerceptronModelEstimator import MultiPerceptronModelEstimator
 from Agents.DPGAC2Agent import ModelBasedAgent
-from Utils import ReplayBuffer
-from Utils import SummaryWriter
-from Utils import ReplayBuffer
-from Utils import OrnsteinUhlenbeckActionNoise
-from Utils import getModuleLogger
+from Utils.Utils import ReplayBuffer
+from Utils.Utils import SummaryWriter
+from Utils.Utils import ReplayBuffer
+from Utils.Utils import OrnsteinUhlenbeckActionNoise
+from Utils.Utils import getModuleLogger
 from EnvironmentRunner import runEnvironmentWithAgent
-from mpi_running_mean_std import RunningMeanStd
+from Utils.MPIRunningMeanStd import RunningMeanStd
 
 # Module logger
 logger = getModuleLogger(__name__)

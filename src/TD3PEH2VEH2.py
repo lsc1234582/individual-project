@@ -1,6 +1,3 @@
-"""
-With prioritized replay buffer
-"""
 import argparse
 import copy
 import gym
@@ -11,12 +8,12 @@ import EnvironmentRunner
 #from tensorflow.python import debug as tf_debug
 from Estimators.DPGMultiPerceptronPolicyEstimator import DPGMultiPerceptronPolicyEstimator
 from Estimators.DPGMultiPerceptronValueEstimator import DPGMultiPerceptronValueEstimator
-from Utils import SummaryWriter
-from Utils import OrnsteinUhlenbeckActionNoise
-from Utils import PrioritizedReplayBuffer
-from Utils import getModuleLogger
+from Utils.Utils import SummaryWriter
+from Utils.Utils import OrnsteinUhlenbeckActionNoise
+from Utils.Utils import PrioritizedReplayBuffer
+from Utils.Utils import getModuleLogger
 from EnvironmentRunner import runEnvironmentWithAgent
-from mpi_running_mean_std import RunningMeanStd
+from Utils.MPIRunningMeanStd import RunningMeanStd
 from Agents.TD3Agent import TD3Agent
 
 # Module logger

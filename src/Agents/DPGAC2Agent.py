@@ -4,9 +4,9 @@ import random
 import tensorflow as tf
 import time
 import pprint
-from Utils import ReplayBuffer
-from Utils import getModuleLogger
-from Utils import generateRandomAction
+from Utils.Utils import ReplayBuffer
+from Utils.Utils import getModuleLogger
+from Utils.Utils import generateRandomAction
 import pickle as pk
 
 # TODO: Remove after debug

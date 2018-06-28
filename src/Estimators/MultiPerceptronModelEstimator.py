@@ -1,6 +1,6 @@
 import tensorflow as tf
 import tflearn
-from Utils import normalize, denormalize
+from Utils.Utils import normalize, denormalize
 
 class MultiPerceptronModelEstimator(object):
     """ Multi-Perceptron Model

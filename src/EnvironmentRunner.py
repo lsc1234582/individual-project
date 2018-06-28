@@ -4,8 +4,8 @@ import numpy as np
 import random
 import tensorflow as tf
 from EnvironmentFactory import EnvironmentContext
-from Utils import getModuleLogger
-from Utils import SortedDisplayDict
+from Utils.Utils import getModuleLogger
+from Utils.Utils import SortedDisplayDict
 
 # Module logger
 logger = getModuleLogger(__name__)

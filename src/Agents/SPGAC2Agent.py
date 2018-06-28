@@ -1,8 +1,8 @@
 import numpy as np
 import tensorflow as tf
 
-from Utils import ReplayBuffer
-from Utils import getModuleLogger
+from Utils.Utils import ReplayBuffer
+from Utils.Utils import getModuleLogger
 
 # Module logger
 logger = getModuleLogger(__name__)

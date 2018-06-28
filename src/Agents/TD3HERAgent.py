@@ -3,9 +3,9 @@ import random
 import tensorflow as tf
 import time
 import pprint
-from Utils import ReplayBuffer
-from Utils import getModuleLogger
-from Utils import generateRandomAction
+from Utils.Utils import ReplayBuffer
+from Utils.Utils import getModuleLogger
+from Utils.Utils import generateRandomAction
 from Agents.DPGAC2Agent import AgentBase
 import pickle as pk
 

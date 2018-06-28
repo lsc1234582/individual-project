@@ -6,7 +6,7 @@ from Environments.VREPEnvironments import VREPPushTask7DoFSparseRewardsIKEnviron
 from Environments.VREPEnvironments import VREPGraspTask7DoFSparseRewardsIKEnvironment
 import numpy as np
 import tkinter as tk
-from Utils import ReplayBuffer
+from Utils.Utils import ReplayBuffer
 import pprint
 
 class Application(tk.Frame):

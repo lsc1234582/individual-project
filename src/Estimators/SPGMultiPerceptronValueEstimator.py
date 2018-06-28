@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from Utils import *
+from Utils.Utils import *
 
 class SPGMultiPerceptronValueEstimator():
     """ Stochastic Policy Gradient Value Function Approximator.

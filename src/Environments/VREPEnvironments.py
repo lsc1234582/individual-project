@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 import vrep
 
-from Utils import getModuleLogger
+from Utils.Utils import getModuleLogger
 
 # Module logger
 logger = getModuleLogger(__name__)

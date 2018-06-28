@@ -5,35 +5,20 @@ critic) and tunable hyperparameters (e.g. hidden layer size of the value estimat
 New agent types need to be registered here.
 """
 
-import DPGAC2PEH2VEH2
-import DPGAC2PEH3VEH3
-
-from SPGAC2PEH1VEH1 import MakeSPGAC2PEH1VEH1
 from DPGAC2PEH2VEH2 import MakeDPGAC2PEH2VEH2
-from DPGAC2PEH3VEH3 import MakeDPGAC2PEH3VEH3
-from DPGAC2WithDemoPEH2VEH2 import MakeDPGAC2WithDemoPEH2VEH2
-#from DPGAC2WithMultiPModelAndDemoPEH2VEH2MEH2 import MakeDPGAC2WithMultiPModelAndDemoPEH2VEH2MEH2
 from DPGAC2WithPrioritizedRBPEH2VEH2 import MakeDPGAC2WithPrioritizedRBPEH2VEH2
 from TD3PEH2VEH2 import MakeTD3PEH2VEH2
 from TD3HERPEH2VEH2 import MakeTD3HERPEH2VEH2
 from ModelBasedMEH2 import MakeModelBasedMEH2
 
 AGENTS = {
-        "SPGAC2PEH1VEH1": MakeSPGAC2PEH1VEH1,
         "DPGAC2PEH2VEH2": MakeDPGAC2PEH2VEH2,
-        "DPGAC2PEH3VEH3": MakeDPGAC2PEH3VEH3,
-        "DPGAC2WithDemoPEH2VEH2": MakeDPGAC2WithDemoPEH2VEH2,
-        #"DPGAC2WithMultiPModelAndDemoPEH2VEH2MEH2": MakeDPGAC2WithMultiPModelAndDemoPEH2VEH2MEH2,
         "DPGAC2WithPrioritizedRBPEH2VEH2": MakeDPGAC2WithPrioritizedRBPEH2VEH2,
         "ModelBasedMEH2": MakeModelBasedMEH2,
         "TD3PEH2VEH2": MakeTD3PEH2VEH2,
         "TD3HERPEH2VEH2": MakeTD3HERPEH2VEH2,
         }
 
-AGENT_PARSER = {
-        "DPGAC2PEH2VEH2": DPGAC2PEH2VEH2.getArgParser,
-        "DPGAC2PEH3VEH3": DPGAC2PEH3VEH3.getArgParser,
-        }
 
 def MakeAgent(session, env, args):
     return (AGENTS[args.agent_name])(session, env, args)
