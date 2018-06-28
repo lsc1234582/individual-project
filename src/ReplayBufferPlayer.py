@@ -22,6 +22,10 @@ if __name__ == "__main__":
     parser.add_argument("--joint-vel-csv-dir", help="Path to csv file holding joint velocities data")
     parser.add_argument("--action-npy-dir", help="Path to npy file holding action data")
     args = parser.parse_args()
+    episode_return = 0
+    episode_steps = 0
+    get_rb_stats = False
+    episode_num = 1
     if args.joint_vel_csv_dir is not None:
         #assert args.replay_buffer_save_dir is not None
         if args.replay_buffer_save_dir is not None:
@@ -70,22 +74,26 @@ if __name__ == "__main__":
                 action[0, 6] = joint_vels[step, 6]
                 #print("Action")
                 #print(action)
-                next_state, r, done, _, corrected_action = env.step(new_joint_vels[step+1, :].reshape(1, -1), vels_only=True)
+                next_state, r, _, done, _, corrected_action = env.step(new_joint_vels[step+1, :].reshape(1, -1), vels_only=True)
                 rb_to_save.add(state.squeeze(), corrected_action.squeeze(), r.squeeze(), next_state.squeeze(), done)
+                episode_return += r
+                episode_steps += 1
                 state = np.copy(next_state)
                 #corrected_actions.append(corrected_action)
                 #_, r, done, _ = env.step(action.reshape(1, -1), vels_only=False)
-                print("Reward: {}".format(r))
+                #print("Reward: {}".format(r))
                 if done:
                     env.reset()
-                    break
+                    print("Episode return: {}".format(episode_return))
+                    episode_return = 0
+                    episode_steps = 0
                     episode_num += 1
+                    break
 
             #np.save("/home/sicong/vrep_actions.npy", np.concatenate(corrected_actions, axis=0))
             if args.replay_buffer_save_dir:
                 rb_to_save.save(args.replay_buffer_save_dir)
     elif args.replay_buffer_load_dir is not None:
-        episode_num = 1
         replay_buffer = ReplayBuffer(1)
         replay_buffer.load(args.replay_buffer_load_dir)
 
@@ -97,22 +105,39 @@ if __name__ == "__main__":
         print(replay_buffer.size())
         print("number of episodes in the replay buffer")
         print(int(replay_buffer.size() / args.max_episode_length))
-
-        with EnvironmentContext(args.env_name) as env:
-            done = False
-            state = env.reset()
+        if get_rb_stats:
             for step, exp in enumerate(replay_buffer._storage):
-                _, action, _, _, done = exp
-                next_state, r, done2,  _ = env.step(np.reshape(action, (1, -1)))
-                rb_to_save.add(state.squeeze(), action.squeeze(), r.squeeze(), next_state.squeeze(), done2)
-                print("Reward: {}".format(r))
-                state = np.copy(next_state)
+                _, action, r, _, done = exp
+                episode_return += r
+                episode_steps += 1
+                #print("Reward: {}".format(r))
                 if done:
-                    env.reset()
+                    print("Episode {}: return: {}; steps: {}".format(episode_num, episode_return, episode_steps))
+                    episode_return = 0
+                    episode_steps = 0
                     episode_num += 1
+        else:
+            with EnvironmentContext(args.env_name) as env:
+                done = False
+                state = env.reset()
+                for step, exp in enumerate(replay_buffer._storage):
+                    _, action, _, _, done = exp
+                    next_state, r, _,  done2, _ = env.step(np.reshape(action, (1, -1)))
+                    episode_return += r
+                    episode_steps += 1
+                    rb_to_save.add(state.squeeze(), action.squeeze(), r.squeeze(), next_state.squeeze(), done2)
+                    #print("Reward: {}".format(r))
+                    #_ = input()
+                    state = np.copy(next_state)
+                    if done:
+                        env.reset()
+                        print("Episode {}: return: {}; steps: {}".format(episode_num, episode_return, episode_steps))
+                        episode_return = 0
+                        episode_steps = 0
+                        episode_num += 1
 
-            if args.replay_buffer_save_dir:
-                rb_to_save.save(args.replay_buffer_save_dir)
+                if args.replay_buffer_save_dir:
+                    rb_to_save.save(args.replay_buffer_save_dir)
 
     elif args.action_npy_dir is not None:
         actions = np.load(args.action_npy_dir)
