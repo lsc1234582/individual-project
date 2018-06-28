@@ -1,16 +1,8 @@
 import numpy as np
 import random
 import tensorflow as tf
-import time
-import pprint
-from Utils.Utils import ReplayBuffer
 from Utils.Utils import getModuleLogger
-from Utils.Utils import generateRandomAction
-from Agents.DPGAC2Agent import AgentBase
-import pickle as pk
-
-# TODO: Remove after debug
-#np.set_printoptions(threshold=np.nan, linewidth=200)
+from Agents.AgentBase import AgentBase
 
 # Module logger
 logger = getModuleLogger(__name__)
@@ -34,13 +26,9 @@ class TD3Agent(AgentBase):
         self._value_estimator2 = value_estimator2
         self._stats_epoch_Q = []
         self._stats_epoch_critic_loss = []
-        #TODO: Remove DEBUG
-        self._debug_freq = 200
         # Beta used in prioritized rb for importance sampling
         # TODO: Remove hardcoded value
         self._replay_buffer_beta = 1.0
-        #TODO: Remove DEBUG
-        self._debug_freq = 200
         self._policy_and_target_update_freq = policy_and_target_update_freq
 
     def _initialize(self):
@@ -134,13 +122,7 @@ class TD3Agent(AgentBase):
             epislon = 1e-2
             demo_bonuses = np.zeros_like(td_error)
             demo_bonuses[np.array(indexes) < self._replay_buffer.get_loaded_storage_size(), :] = 0.05
-            #print("HAHA")
-            #print(demo_bonuses)
-            #print(td_error.shape[0] - nb_ns_td_target)
             priorities = np.square(td_error) + lambda3 * np.square(np.linalg.norm(grads)) + epislon + demo_bonuses
-            #print("TDERROR!!!")
-            #print(self._replay_buffer._it_sum.sum())
-            #print(self._replay_buffer._it_min.min())
             assert(not np.isnan(self._replay_buffer._it_sum.sum()))
             assert(not np.isinf(self._replay_buffer._it_sum.sum()))
             assert(self._replay_buffer._it_sum.sum() > 0)
@@ -148,22 +130,12 @@ class TD3Agent(AgentBase):
             assert(not np.isinf(self._replay_buffer._it_min.min()))
             assert(self._replay_buffer._it_min.min() > 0)
 
-            #TODO: Remove DEBUG
-            #if self._stats_tot_steps % self._debug_freq == 0:
-            #    with open("DEBUG_rb_freq.pkl", "wb") as f:
-            #        pk.dump(self._replay_buffer.debug_get_sample_freq(), f)
-            #    with open("DEBUG_rb_priorities.pkl", "wb") as f:
-            #        pk.dump(self._replay_buffer.debug_get_priorities(), f)
-
             # Early stop
             if np.isnan(ve_loss) or np.isnan(ve_loss2):
                 logger.error("Training: value estimator loss is nan, stop training")
                 self._stop_training = True
 
             # Some basic summary of training loss
-            #if self._step % 100 == 0:
-            #    self._summary_writer.writeSummary({"ValueEstimatorTrainLoss": ve_loss}, self._step)
-                # Update target networks and policy
             if self._stats_tot_steps % self._policy_and_target_update_freq == 0:
                 # Update the actor policy using the sampled gradient
                 self._policy_estimator.update(current_state_batch, grads[0])

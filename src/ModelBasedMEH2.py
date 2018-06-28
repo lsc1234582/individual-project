@@ -7,7 +7,7 @@ import tensorflow as tf
 import EnvironmentRunner
 #from tensorflow.python import debug as tf_debug
 from Estimators.MultiPerceptronModelEstimator import MultiPerceptronModelEstimator
-from Agents.DPGAC2Agent import ModelBasedAgent
+from Agents.ModelBasedAgent import ModelBasedAgent
 from Utils.Utils import ReplayBuffer
 from Utils.Utils import SummaryWriter
 from Utils.Utils import ReplayBuffer

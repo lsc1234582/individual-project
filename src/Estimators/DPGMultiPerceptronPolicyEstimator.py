@@ -77,22 +77,6 @@ class DPGMultiPerceptronPolicyEstimator(object):
         self._num_trainable_vars = len(
             self._network_params) + len(self._target_network_params)
 
-            #graph = tf.get_default_graph()
-
-            #self._inputs = graph.get_tensor_by_name(scope + "/inputs:0")
-            #self._scaled_out = graph.get_tensor_by_name(scope + "/scaled_out:0")
-            #self._optimize = graph.get_tensor_by_name(scope + "/optimize:0")
-            #self._action_gradient = graph.get_tensor_by_name(scope + "/action_gradient:0")
-            #self._target_inputs = graph.get_tensor_by_name(scope + "_target/inputs:0")
-            #self._target_scaled_out = graph.get_tensor_by_name(scope + "_target/scaled_out:0")
-
-            #self._network_params = tf.trainable_variables()[num_actor_vars:]
-            #self._target_network_params = tf.trainable_variables()[(len(self._network_params) + num_actor_vars):]
-            #self._update_target_network_params = []
-            #for i in range(len(self._target_network_params)):
-            #    self._update_target_network_params[i] = graph.get_tensor_by_name(
-            #            scope+"_target/update_target_network_params:{}".format(i))
-
     def _create_actor_network(self, scope):
         with tf.name_scope(scope):
             inputs = tflearn.input_data(shape=(None, self._state_dim + self._goal_dim), name="inputs")

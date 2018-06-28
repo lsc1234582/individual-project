@@ -26,7 +26,6 @@ class DPGMultiPerceptronValueEstimator(object):
         self._learning_rate = learning_rate
         self._tau = tau
         # Weights of the n-step term in the loss function
-        # TODO: remove hardcoded.
         # NB: lambda2 = 1/num_steps for n-step td calculation
         self._lambda2 = lambda2
 
@@ -101,26 +100,6 @@ class DPGMultiPerceptronValueEstimator(object):
             # actions except for one.
             self._action_grads = tf.gradients(self._out, self._action, name="action_grads")
 
-            #graph = tf.get_default_graph()
-
-            #self._inputs = graph.get_tensor_by_name(scope + "/inputs:0")
-            #self._action = graph.get_tensor_by_name(scope + "/action:0")
-            #self._out = graph.get_tensor_by_name(scope + "/out:0")
-            #self._td_target = graph.get_tensor_by_name(scope + "/predicted_q_value:0")
-            #self._loss = graph.get_tensor_by_name(scope + "/loss:0")
-            #self._optimize = graph.get_tensor_by_name(scope + "/optimize:0")
-            #self._action_grads = graph.get_tensor_by_name(scope + "/action_grads:0")
-            #self._target_inputs = graph.get_tensor_by_name(scope + "_target/inputs:0")
-            #self._target_action = graph.get_tensor_by_name(scope + "_target/action:0")
-            #self._target_out = graph.get_tensor_by_name(scope + "_target/out:0")
-
-            #self._network_params = tf.trainable_variables()[num_actor_vars:]
-            #self._target_network_params = tf.trainable_variables()[(len(self._network_params) + num_actor_vars):]
-            #self._update_target_network_params = []
-            #for i in range(len(self._target_network_params)):
-            #    self._update_target_network_params[i] = graph.get_tensor_by_name(
-            #            scope+"_target/update_target_network_params:{}".format(i))
-
     def _create_critic_network(self, scope):
         with tf.name_scope(scope):
             inputs = tflearn.input_data(shape=(None, self._state_dim + self._goal_dim), name="inputs")
@@ -138,13 +117,6 @@ class DPGMultiPerceptronValueEstimator(object):
                 # Add layer normalization
                 net = tf.contrib.layers.layer_norm(net, center=True, scale=True)
                 net = tflearn.activations.relu(net)
-
-            # Add the action tensor in the last hidden layer
-            # Use two temp layers to get the corresponding weights and biases
-            #t1 = tflearn.fully_connected(net, self._h_layer_shapes[-1])
-            #tflearn.helpers.regularizer.add_weights_regularizer(t1.W, "L2")
-            #t2 = tflearn.fully_connected(action, self._h_layer_shapes[-1])
-            #tflearn.helpers.regularizer.add_weights_regularizer(t2.W, "L2")
 
             net = tf.concat([net, action], axis=1)
             net = tflearn.fully_connected(net, self._h_layer_shapes[-1])

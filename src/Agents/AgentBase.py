@@ -1,50 +1,91 @@
+import collections
 import numpy as np
-import random
 import tensorflow as tf
 import time
 from Utils.Utils import getModuleLogger
-from Agents.AgentBase import AgentBase
 
 # Module logger
 logger = getModuleLogger(__name__)
 
-class TD3HERAgent(AgentBase):
-    def __init__(self, sess, env, policy_estimator, value_estimator1, value_estimator2, replay_buffer,
+class AgentBase(object):
+    def __init__(self, sess, env, replay_buffer,
             discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise, summary_writer,
             estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
             replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates=1,
-            log_stats_freq=1, train_freq=1, eval_replay_buffer=None, test_freq=50, num_test_eps=20,
-            policy_and_target_update_freq = 2):
+            log_stats_freq=1, train_freq=1, eval_replay_buffer=None, test_freq=50, num_test_eps=20):
+        self._sess = sess
+        self._env = env
+        self._discount_factor = discount_factor
+        self._num_train_steps = num_train_steps
+        self._max_episode_length = max_episode_length
+        self._minibatch_size = minibatch_size
+        self._actor_noise = actor_noise
 
-        super().__init__(sess, env, replay_buffer,
-            discount_factor, num_train_steps, max_episode_length, minibatch_size, actor_noise, summary_writer,
-            estimator_save_dir, estimator_saver_recent, estimator_saver_best, recent_save_freq, replay_buffer_save_dir,
-            replay_buffer_save_freq, normalize_states, state_rms, normalize_returns, return_rms, num_updates,
-            log_stats_freq, train_freq, eval_replay_buffer, test_freq, num_test_eps)
+        self._step = 0
 
-        self._policy_estimator = policy_estimator
-        self._value_estimator1 = value_estimator1
-        self._value_estimator2 = value_estimator2
-        self._stats_epoch_Q = []
-        self._stats_epoch_critic_loss = []
-        # Beta used in prioritized rb for importance sampling
-        # TODO: Remove hardcoded value
-        self._replay_buffer_beta = 1.0
-        self._policy_and_target_update_freq = policy_and_target_update_freq
+        self._last_state = None
+        self._last_action = None
 
-        # For HER goal relabling
-        self._episode_experience = []
+        # To implement early stop
+        self._stop_training = False
 
-    def _initialize(self):
-        self._policy_estimator.update_target_network(tau=1.0)
-        self._value_estimator1.update_target_network(tau=1.0)
-        self._value_estimator2.update_target_network(tau=1.0)
+        # Summary and checkpoints
+        # Agent stats related
+        self._stats_sample = None
+        self._stats_sample_size = 100
+
+        # The number of episodes to average total reward over; used for score
+        self._num_rewards_to_average = 100
+
+        self._episode_return = 0
+        self._episode_return_dense = 0
+        self._episode_returns = collections.deque(maxlen=self._num_rewards_to_average)
+        # Rollout stats related
+        # Our objective metric
+        self._best_average_episode_return = None
+        self._stats_start_time = time.time()
+        self._stats_epoch_episode_returns = []
+        self._stats_epoch_episode_returns_dense = []
+        self._stats_epoch_episode_steps = []
+        self._stats_epoch_actions = []
+        self._stats_tot_steps = 0
+        self._log_stats_freq = log_stats_freq
+
+        self._best_score_step = 0
+
+        self._replay_buffer = replay_buffer
+        self._summary_writer = summary_writer
+        self._estimator_save_dir = estimator_save_dir
+        self._estimator_saver_recent = estimator_saver_recent
+        self._estimator_saver_best = estimator_saver_best
+        self._recent_save_freq = recent_save_freq
+        self._replay_buffer_save_dir = replay_buffer_save_dir
+        self._replay_buffer_save_freq = replay_buffer_save_freq
+
+        self._eval_replay_buffer = eval_replay_buffer
+
+        self._normalize_states = normalize_states
+        self._state_rms = state_rms
+        self._normalize_returns = normalize_returns
+        self._return_rms = return_rms
+
+        # Number of updates per training step
+        self._num_updates = num_updates
+        # Training frequency in number of rollout steps
+        self._train_freq = train_freq
+
+        # Test for success rate
+        # Test frequency, in number of episodes
+        self._is_test_episode = False
+        self._test_freq = test_freq
+        self._num_test_eps = num_test_eps
+        self._num_success_test_eps = 0
+        self._last_success_rate = 0.0
+        self._test_eps_counter = 0
+
 
     def _sampleBatch(self, rb, batch_size, **kwargs):
-        beta = kwargs["beta"] if "beta" in kwargs else self._replay_buffer_beta
-
-        return rb.sample_batch(batch_size=batch_size, beta=beta)
-
+        return rb.sample_batch(batch_size=batch_size)
 
     def _getStats(self):
         # Auxiliary data to pass to child class
@@ -54,8 +95,6 @@ class TD3HERAgent(AgentBase):
             # Get a sample and keep that fixed for all further computations.
             # This allows us to estimate the change in value for the same set of inputs.
             self._stats_sample = self._sampleBatch(self._replay_buffer, self._stats_sample_size)
-        # Combine states and goals
-        state_goal_sample = np.concatenate([self._stats_sample[0], self._stats_sample[5]], axis=1)
         # Add normalization stats
         ops = []
         names = []
@@ -70,7 +109,7 @@ class TD3HERAgent(AgentBase):
         values = self._sess.run(ops)
         assert len(names) == len(values)
         stats = dict(zip(names, values))
-        stats_sample_action = self._getBestAction(state_goal_sample)
+        stats_sample_action = self._getBestAction(self._stats_sample[0])
         aux["stats_sample_action"] = stats_sample_action
         stats["agent_sample_action_mean"] = np.mean(stats_sample_action)
         stats["agent_sample_action_std"] = np.std(stats_sample_action)
@@ -97,119 +136,76 @@ class TD3HERAgent(AgentBase):
         stats['total/steps_per_second'] = float(self._stats_tot_steps) / float(stats_tot_duration)
         stats['total/steps'] = self._stats_tot_steps
 
-        #stats, aux = super()._getStats()
-
-        # Agent stats
-        stats_sample_q1 = self._value_estimator1.predict(state_goal_sample, self._stats_sample[1])
-        stats_sample_q2 = self._value_estimator2.predict(state_goal_sample, self._stats_sample[1])
-        stats["agent_sample_Q_mean"] = np.mean(stats_sample_q1)
-        stats["agent_sample_Q_std"] = np.std(stats_sample_q1)
-        stats["agent_sample_Q2_mean"] = np.mean(stats_sample_q2)
-        stats["agent_sample_Q2_std"] = np.std(stats_sample_q2)
-        stats_sample_action_q = self._value_estimator1.predict(state_goal_sample, aux["stats_sample_action"])
-        stats["agent_sample_action_Q_mean"] = np.mean(stats_sample_action_q)
-        stats["agent_sample_action_Q_std"] = np.std(stats_sample_action_q)
-
-        # Epoch stats
-        stats['epoch/Q_mean'] = np.mean(self._stats_epoch_Q)
-        stats['epoch/Q_std'] = np.std(self._stats_epoch_Q)
-        #stats['epoch/actor_loss'] = np.mean(self._stats_epoch_actor_loss)
-        stats['epoch/critic_loss'] = np.mean(self._stats_epoch_critic_loss)
-        # Clear epoch statistics.
-        self._stats_epoch_Q = []
-        self._stats_epoch_critic_loss = []
-
         return stats, aux
 
-    def _getBestAction(self, state):
-        best_action = self._policy_estimator.predict(state)
-        return best_action
-
-    def _recordLogAfterBestAction(self, *args, **kwargs):
+    def _logStats(self, episode_num):
         """
-        Record various metric for stats purpose
+        Logging happens at the end of every logging epoch, which is determined by the logging frequency, in number of
+        episodes
         """
-        state = kwargs["state"]
-        best_action = kwargs["best_action"]
+        stats, _ = self._getStats()
+        self._summary_writer.writeSummary(stats, episode_num)
 
-        batch_size = state.shape[0]
-        goal_batch = np.array([self._env._goal.copy() for _ in range(batch_size)])
 
-        state_goal = np.concatenate([state, goal_batch], axis=1)
-        best_action_q = self._value_estimator1.predict(state_goal, best_action)
-        self._stats_epoch_actions.append(best_action)
-        self._stats_epoch_Q.append(best_action_q)
+    def initialize(self):
+        """
+        Target networks share the same parameters with the behaviourial networks at the beginning
+        """
+        logger.info("Initializing agent {}".format(self.__class__.__name__))
+        self._sess.run(tf.global_variables_initializer())
+        self._initialize()
 
-    def _train(self):
-        for _ in range(self._num_updates):
-            # Calculate 1-step targets
-            current_state_batch, action_batch, reward_batch, next_state_batch, termination_batch, goal_batch, weights, indexes =\
-                    self._sampleBatch(self._replay_buffer, self._minibatch_size, beta=self._replay_buffer_beta)
-            reward_batch = reward_batch.reshape(self._minibatch_size, -1)
-            weights = weights.reshape(self._minibatch_size, -1)
-            current_state_goal_batch = np.concatenate([current_state_batch, goal_batch], axis=1)
 
-            next_state_goal_batch = np.concatenate([next_state_batch, goal_batch], axis=1)
+    def save(self, estimator_save_dir, is_best=False, step=None, write_meta_graph=False):
+        if write_meta_graph:
+            tf.train.export_meta_graph(filename="{}/{}.meta".format(estimator_save_dir, self.__class__.__name__))
+            logger.info("{} meta graph saved".format(self.__class__.__name__))
+        else:
+            if is_best:
+                self._estimator_saver_best.save(self._sess, "{}/best/{}".format(estimator_save_dir, self.__class__.__name__), global_step=step,
+                    write_meta_graph=False)
+            else:
+                self._estimator_saver_recent.save(self._sess, "{}/recent/{}".format(estimator_save_dir, self.__class__.__name__), global_step=step,
+                    write_meta_graph=False)
+            logger.info("{} saved".format(self.__class__.__name__))
 
-            target_action = self._policy_estimator.predict_target(next_state_goal_batch)
-            target_action += np.clip(np.random.normal(0.0, 0.02, size=target_action.shape), -0.05, 0.05)
-            predicted_target_q1 = self._value_estimator1.predict_target(
-                next_state_goal_batch, target_action)
-            predicted_target_q2 = self._value_estimator2.predict_target(
-                next_state_goal_batch, target_action)
-            min_predicted_target_q = np.min([predicted_target_q1, predicted_target_q2], axis=0)
+    def saveReplayBuffer(self, path):
+        self._replay_buffer.save(path)
+        logger.info("Replay buffer saved")
 
-            td_target = np.copy(reward_batch)
-            td_target[~termination_batch, :] += self._discount_factor * min_predicted_target_q[~termination_batch, :]
+    def load(self, estimator_dir, is_best=False):
+        if is_best:
+            logger.info("Loading the best {}".format(self.__class__.__name__))
+            self._estimator_saver_best.restore(self._sess,
+                    tf.train.latest_checkpoint("{}/best".format(estimator_dir)))
+        else:
+            logger.info("Loading the most recent {}".format(self.__class__.__name__))
+            self._estimator_saver_recent.restore(self._sess,
+                    tf.train.latest_checkpoint("{}/recent".format(estimator_dir)))
+        logger.info("{} loaded".format(self.__class__.__name__))
 
-            # Update the critic given the targets
-            _, td_error, ve_weighted_loss, ve_loss = self._value_estimator1.update_with_weights(
-                    current_state_goal_batch, action_batch, td_target, weights)
-            _, td_error2, ve_weighted_loss2, ve_loss2 = self._value_estimator2.update_with_weights(
-                    current_state_goal_batch, action_batch, td_target, weights)
-            self._stats_epoch_critic_loss.append(ve_loss)
+    def loadReplayBuffer(self, path):
+        assert self._replay_buffer is not None
+        self._replay_buffer.load(path)
+        logger.info("Replay buffer loaded")
 
-            # NB: Use td_target because it's not pure estimate (reward as samples)
-            if self._normalize_returns:
-                self._return_rms.update(td_target.flatten())
+    def loadEvalReplayBuffer(self, path):
+        assert self._eval_replay_buffer is not None
+        self._eval_replay_buffer.load(path)
+        logger.info("Evaluation replay buffer loaded")
 
-            a_outs = self._policy_estimator.predict(current_state_goal_batch)
-            grads = self._value_estimator1.action_gradients(current_state_goal_batch, a_outs)
+    def score(self):
+        return self._best_average_episode_return
 
-            # Calculate and update new priorities for sampled transitions
-            #TODO: Remove hardcoded value
-            lambda3 = 0.1
-            epislon = 1e-2
-            demo_bonuses = np.zeros_like(td_error)
-            demo_bonuses[np.array(indexes) < self._replay_buffer.get_loaded_storage_size(), :] = 0.05
-            priorities = np.square(td_error) + lambda3 * np.square(np.linalg.norm(grads)) + epislon + demo_bonuses
-            assert(not np.isnan(self._replay_buffer._it_sum.sum()))
-            assert(not np.isinf(self._replay_buffer._it_sum.sum()))
-            assert(self._replay_buffer._it_sum.sum() > 0)
-            assert(not np.isnan(self._replay_buffer._it_min.min()))
-            assert(not np.isinf(self._replay_buffer._it_min.min()))
-            assert(self._replay_buffer._it_min.min() > 0)
+    def scoreStep(self):
+        return self._best_score_step
 
-            # Early stop
-            if np.isnan(ve_loss) or np.isnan(ve_loss2):
-                logger.error("Training: value estimator loss is nan, stop training")
-                self._stop_training = True
-
-            # Some basic summary of training loss
-            if self._stats_tot_steps % self._policy_and_target_update_freq == 0:
-                # Update the actor policy using the sampled gradient
-                self._policy_estimator.update(current_state_goal_batch, grads[0])
-                self._policy_estimator.update_target_network()
-                self._value_estimator1.update_target_network()
-                self._value_estimator2.update_target_network()
-
-    def _evaluate(self):
-        pass
+    def reset(self):
+        self._actor_noise.reset()
 
     def _normalizationUpdateAfterRB(self, *args, **kwargs):
         if self._normalize_states:
-            self._state_rms.update(np.array(np.concatenate([self._last_state, self._env._goal.reshape(1, -1)],
-                axis=1)))
+            self._state_rms.update(np.array([self._last_state]))
 
 
     def act(self, current_state, last_reward, last_reward_dense, termination, episode_start_num, episode_num, global_step_num, is_learning=False):
@@ -237,7 +233,7 @@ class TD3HERAgent(AgentBase):
         # Initialize the last state and action
         if self._last_state is None:
             self._last_state = current_state
-            best_action = self._getBestAction(np.concatenate([self._last_state, self._env._goal.reshape(1, -1)], axis=1))
+            best_action = self._getBestAction(self._last_state)
             if not self._is_test_episode:
                 # Add exploration noise when training
                 if is_learning:
@@ -258,16 +254,13 @@ class TD3HERAgent(AgentBase):
             # Store the last step
             self._replay_buffer.add(self._last_state.squeeze().copy(), self._last_action.squeeze().copy(),
                 last_reward.squeeze(),
-                current_state.squeeze().copy(), termination, self._env._goal.copy())
-            self._episode_experience.append((self._last_state.squeeze().copy(), self._last_action.squeeze().copy(),
-                last_reward.squeeze(),
-                current_state.squeeze().copy(), termination, self._env._goal.copy()))
+                current_state.squeeze().copy(), termination)
             # TODO: Should normalize for test episodes as well?
             self._normalizationUpdateAfterRB(current_state=current_state)
 
         if not termination:
             self._last_state = current_state.copy()
-            best_action = self._getBestAction(np.concatenate([self._last_state, self._env._goal.reshape(1, -1)], axis=1))
+            best_action = self._getBestAction(self._last_state)
             if not self._is_test_episode:
                 # Add exploration noise when training
                 if is_learning:
@@ -289,16 +282,7 @@ class TD3HERAgent(AgentBase):
                     self._is_test_episode = False
                     switched_to_train = True
             else:
-                # Add goal re-labelled experiences to replay buffer
                 episode_num_this_run = episode_num - episode_start_num + 1
-                # Make the last state reached in the episode the new goal
-                _, _, _, last_State, _, _ = self._episode_experience[-1]
-                new_goal = self._env.extractGoal(last_State)
-                for i in range(len(self._episode_experience)):
-                    s, a, _, ns, d, _ = self._episode_experience[i]
-                    r = self._env.getRewards(s, a, ns, goal=new_goal)
-                    self._replay_buffer.add(s, a, r.squeeze(), ns, d, new_goal.squeeze().copy())
-
                 # Record cumulative reward of trial
                 self._episode_returns.append(self._episode_return)
                 self._stats_epoch_episode_returns.append(self._episode_return)
@@ -340,7 +324,6 @@ class TD3HERAgent(AgentBase):
             self._last_state = None
             self._last_action = None
             self.reset()
-            self._episode_experience = []
 
         if (not switched_to_train) and (not self._is_test_episode):
             # Checkpoint recent

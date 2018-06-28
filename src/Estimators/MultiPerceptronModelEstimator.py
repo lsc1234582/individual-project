@@ -39,25 +39,6 @@ class MultiPerceptronModelEstimator(object):
             self._optimize = tf.train.AdamOptimizer(
                 self._learning_rate).minimize(self._loss, name="optimize")
 
-            #graph = tf.get_default_graph()
-
-            #self._inputs = graph.get_tensor_by_name(scope + "/inputs:0")
-            #self._action = graph.get_tensor_by_name(scope + "/action:0")
-            #self._outputs = graph.get_tensor_by_name(scope + "/out:0")
-            #self._actual_outputs = graph.get_tensor_by_name(scope + "/predicted_q_value:0")
-            #self._loss = graph.get_tensor_by_name(scope + "/loss:0")
-            #self._optimize = graph.get_tensor_by_name(scope + "/optimize:0")
-            #self._action_grads = graph.get_tensor_by_name(scope + "/action_grads:0")
-            #self._target_inputs = graph.get_tensor_by_name(scope + "_target/inputs:0")
-            #self._target_action = graph.get_tensor_by_name(scope + "_target/action:0")
-            #self._target_out = graph.get_tensor_by_name(scope + "_target/out:0")
-
-            #self._network_params = tf.trainable_variables()[num_actor_vars:]
-            #self._target_network_params = tf.trainable_variables()[(len(self._network_params) + num_actor_vars):]
-            #self._update_target_network_params = []
-            #for i in range(len(self._target_network_params)):
-            #    self._update_target_network_params[i] = graph.get_tensor_by_name(
-            #            scope+"_target/update_target_network_params:{}".format(i))
 
     def _create_model_network(self, scope):
         with tf.name_scope(scope):
