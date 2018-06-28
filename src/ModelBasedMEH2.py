@@ -141,7 +141,6 @@ if __name__ == "__main__":
 
     args.agent_name = "ModelBasedMEH2"
 
-
     logger.info("Starting Agent {} in Environment {}".format(args.agent_name, args.env_name))
     runEnvironmentWithAgent(args)
     logger.info("Exiting")

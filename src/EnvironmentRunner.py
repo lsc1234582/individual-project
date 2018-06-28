@@ -92,14 +92,6 @@ def runEnvironmentWithAgent(args):
                     # No need to push forward when the agent stops training and has collected enough episodes to obtain a score
                     logger.warn("Agent stopped training. Exiting experiment...")
                     break
-                #logger.debug("Observation")
-                #logger.debug(observation)
-                #logger.debug("Action")
-                #logger.debug(action)
-                #logger.debug("Reward")
-                #logger.debug(reward)
-                #logger.debug("Done")
-                #logger.debug(done)
 
     logger.info("Best score: {}".format(agent.score()))
     logger.info("Exiting environment: {}".format(args.env_name))

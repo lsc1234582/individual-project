@@ -55,7 +55,6 @@ class VREPEnvironment(object):
 class VREPPushTaskEnvironment(VREPEnvironment):
     """
     Distance unit: m
-    Maximum distance between target and cuboid: 2m; this will affect the reward function for VREPPushTaskMultiStepRewardEnvironment
     """
     CUBOID_SIDE_LENGTH = 0.1
     GRIPPER_BASE_TO_CLOSED_TIP_DIST = 0.15
@@ -115,7 +114,6 @@ class VREPPushTaskEnvironment(VREPEnvironment):
             [current_vel, joint_angles, gripper_pos, gripper_orient, cuboid_gripper_vec, target_plane_cuboid_vec]
              6              6               3           3               3                   3
         """
-        #print("PARENT 1")
         current_vel = np.array([0, 0, 0, 0, 0, 0], dtype='float')
         joint_angles = np.array([0, 0, 0, 0, 0, 0], dtype='float')
         # obtain first state
@@ -128,30 +126,25 @@ class VREPPushTaskEnvironment(VREPEnvironment):
             ret, joint_angles[i] = vrep.simxGetJointPosition(client_ID, joint_handles[i], vrep.simx_opmode_buffer)
             while ret != vrep.simx_return_ok:
                 ret, joint_angles[i] = vrep.simxGetJointPosition(client_ID, joint_handles[i], vrep.simx_opmode_buffer)
-        #print("PARENT 2")
         ret, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, gripper_pos = vrep.simxGetObjectPosition(client_ID, gripper_handle, -1, vrep.simx_opmode_buffer)
-        #print("PARENT 3")
         ret, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, gripper_orient = vrep.simxGetObjectOrientation(client_ID, gripper_handle, -1, vrep.simx_opmode_buffer)
         gripper_pos = np.array(gripper_pos)
         gripper_orient = np.array(gripper_orient)
 
-        #print("PARENT 4")
         ret, cuboid_pos = vrep.simxGetObjectPosition(client_ID, cuboid_handle, -1, vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, cuboid_pos = vrep.simxGetObjectPosition(client_ID, cuboid_handle, -1, vrep.simx_opmode_buffer)
         cuboid_pos = np.array(cuboid_pos)
 
-        #print("PARENT 5")
         ret, target_plane_pos = vrep.simxGetObjectPosition(client_ID, target_plane_handle, -1, vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, target_plane_pos = vrep.simxGetObjectPosition(client_ID, target_plane_handle, -1, vrep.simx_opmode_buffer)
         target_plane_pos = np.array(target_plane_pos)
 
-        #print("PARENT 6")
         cuboid_gripper_vec = cuboid_pos - gripper_pos
         target_plane_cuboid_vec = target_plane_pos - cuboid_pos
 
@@ -248,8 +241,6 @@ class VREPPushTaskEnvironment(VREPEnvironment):
         next_state = next_state.reshape(batch_size, -1)
         return (-(np.sqrt(np.sum(np.square(state[:, -6:-3]), axis=1)) + np.sqrt(np.sum(np.square(state[:, -3:]),
             axis=1)))).reshape(batch_size, 1)
-        #return -(np.sqrt(np.sum(np.square(action))))
-        #return np.tanh(-(np.sqrt(np.sum(np.square(state[:1]))))/10.0) + 1.0
 
     def getRewards(self, state, action, next_state):
         return self.getRewardsDense(state, action, next_state)
@@ -314,22 +305,9 @@ class VREPPushTaskEnvironment(VREPEnvironment):
         rewards = np.concatenate(rewards, axis=0)
         return next_states, rewards, self._isDone(), None
 
-
-class VREPPushTaskMultiStepRewardEnvironment(VREPPushTaskEnvironment):
-
-    def __init__(self, port=19997, init_joint_pos=None, init_cb_pos=None, init_cb_orient=None, init_tg_pos=None):
-        super().__init__(port, init_joint_pos, init_cb_pos, init_cb_orient, init_tg_pos)
-
-    def getRewards(self, state, action, next_state):
-        gripper_cube_dist = np.sqrt(np.sum(np.square(state[-6:-3])))
-        if gripper_cube_dist >= 0.1 + VREPPushTaskEnvironment.GRIPPER_BASE_TO_CLOSED_TIP_DIST + (VREPPushTaskEnvironment.CUBOID_SIDE_LENGTH * np.sqrt(2) / 2):
-            return -gripper_cube_dist
-        return -gripper_cube_dist + 1 - np.sqrt(np.sum(np.square(state[-3:])))
-
 class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
     """
     Distance unit: m
-    Maximum distance between target and cuboid: 2m; this will affect the reward function for VREPPushTaskMultiStepRewardEnvironment
     """
     # Reset time in seconds
     RESET_TIME = 1.2
@@ -390,8 +368,6 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
         reward = (-(np.sqrt(np.sum(np.square(state[:, -6:-3] - goal[:, -6:-3]), axis=1)) + \
                 np.sqrt(np.sum(np.square(state[:, -3:] - goal[:, -3:]), axis=1)))).reshape(batch_size, 1)
         return np.clip(reward, self.reward_space.low[0], self.reward_space.high[0])
-        #return -(np.sqrt(np.sum(np.square(action))))
-        #return np.tanh(-(np.sqrt(np.sum(np.square(state[:1]))))/10.0) + 1.0
 
     def getRewards(self, state, action, next_state, goal=None):
         return self.getRewardsDense(state, action, next_state, goal)
@@ -425,36 +401,29 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
              6              6               3           3               3                   3
              2                      2
         """
-        #print("GET CURRENT STATE1")
         state = super().getCurrentState(client_ID, joint_handles, gripper_handle, cuboid_handle, target_plane_handle)
         # NOTE: clip cb_grp_vec and tg_cb_vec
         state[18:24] = np.clip(state[18:24], self.observation_space.low[0], self.observation_space.high[0])
-        #print("GET CURRENT STATE2")
         # Gripper joints
         gripper_joint_vel = np.array([0.0, 0.0], dtype='float')
         gripper_joint_angles = np.array([0.0, 0.0], dtype='float')
 
-        #print("GET CURRENT STATE3")
         ret, gripper_joint_vel[0] = vrep.simxGetObjectFloatParameter(client_ID, self.gripper_f1_handle, 2012,
                 vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, gripper_joint_vel[0] = vrep.simxGetObjectFloatParameter(client_ID, self.gripper_f1_handle, 2012,
                     vrep.simx_opmode_buffer)
-        #print("GET CURRENT STATE4")
         ret, gripper_joint_vel[1] = vrep.simxGetObjectFloatParameter(client_ID, self.gripper_f2_handle, 2012,
                 vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, gripper_joint_vel[1] = vrep.simxGetObjectFloatParameter(client_ID, self.gripper_f2_handle, 2012,
                     vrep.simx_opmode_buffer)
-        #print("GET CURRENT STATE5")
         ret, gripper_joint_angles[0] = vrep.simxGetJointPosition(client_ID, self.gripper_f1_handle, vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, gripper_joint_angles[0] = vrep.simxGetJointPosition(client_ID, self.gripper_f1_handle, vrep.simx_opmode_buffer)
-        #print("GET CURRENT STATE6")
         ret, gripper_joint_angles[1] = vrep.simxGetJointPosition(client_ID, self.gripper_f2_handle, vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, gripper_joint_angles[1] = vrep.simxGetJointPosition(client_ID, self.gripper_f2_handle, vrep.simx_opmode_buffer)
-        #print("GET CURRENT STATE7")
 
         return np.concatenate([state, gripper_joint_vel, gripper_joint_angles])
 
@@ -561,7 +530,6 @@ class VREPPushTask7DoFEnvironment(VREPPushTaskEnvironment):
 class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
     """
     Distance unit: m
-    Maximum distance between target and cuboid: 2m; this will affect the reward function for VREPPushTaskMultiStepRewardEnvironment
     """
     # Reset time in seconds
     action_space = Box((11,), (-999.0,), (999.0,))
@@ -582,20 +550,16 @@ class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
             Initiailise gripper tip target to be at the same pos and orient as the gripper
 
         """
-        #print(11)
         super()._initialiseScene()
-        #print(12)
         vrep.simxGetPingTime(self.client_ID)
         _, self._gripper_tt_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1,
                 vrep.simx_opmode_blocking)
         _, self._gripper_tt_orient = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1,
                 vrep.simx_opmode_blocking)
-        #print(13)
         vrep.simxPauseCommunication(self.client_ID, 1)
         ret = vrep.simxSetObjectPosition(self.client_ID, self.gripper_tt_handle, -1, self._gripper_tt_pos, vrep.simx_opmode_oneshot)
         ret = vrep.simxSetObjectOrientation(self.client_ID, self.gripper_tt_handle, -1, self._gripper_tt_orient, vrep.simx_opmode_oneshot)
         vrep.simxPauseCommunication(self.client_ID, 0)
-        #print(14)
 
     def step(self, actions):
         """
@@ -664,26 +628,19 @@ class VREPPushTask7DoFIKEnvironment(VREPPushTask7DoFEnvironment):
             else:
                 # Real step
                 # Update gripper_tt pos and orients to current GRIPPER (NOT Gripper TT) pos and orient (for tt reset)
-                #print("step0")
                 _, self._gripper_tt_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1,
                         vrep.simx_opmode_buffer)
                 _, self._gripper_tt_orient = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1,
                         vrep.simx_opmode_buffer)
-                #print("step1")
                 vrep.simxSynchronousTrigger(self.client_ID)
-                #print("step11")
                 # make sure all commands are exeucted
                 vrep.simxGetPingTime(self.client_ID)
                 # obtain next state
-                #print("step12")
                 next_state = self.getCurrentState(self.client_ID, self.joint_handles, self.gripper_handle, self.cuboid_handle,
                         self.target_plane_handle)
-                #print("step13")
                 next_states.append(next_state.reshape(1, -1))
                 # NOTE: actions is not relevant in calculating rewards
                 rewards.append(self.getRewards(self.state, actions[:, :7], next_state))
-                #print("step14")
-                #print("step2")
                 self._step += 1
                 self.state = np.copy(next_state)
                 if self._isDone():
@@ -733,11 +690,6 @@ class VREPPushTask7DoFSparseRewardsEnvironment(VREPPushTask7DoFEnvironment):
         cube_to_goal_dists = np.sqrt(np.sum(np.square(next_state[:, 21:24] - goal[:, -3:]), axis=1))
         reward = np.zeros_like(cube_to_goal_dists) - 0.1
         reward[(cube_to_goal_dists <= self.CUBOID_SIDE_LENGTH / 2 + 0.1).squeeze()] = 0.0
-        #print("reachedGoal")
-        #print(cube_to_goal_dists)
-        ##print(tg_spot_l_dist)
-        ##print(tg_spot_r_dist)
-        #print("reachedGoal---")
         reward = reward.reshape((-1, 1))
         assert reward.shape[0] == batch_size
         return reward
@@ -832,7 +784,6 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
             27-36:      target to spots vecs(3): bot, l, r
             36-40:      gripper_vel + gripper_pos
         """
-        #print("PARENT 1")
         current_vel = np.array([0, 0, 0, 0, 0, 0], dtype='float')
         joint_angles = np.array([0, 0, 0, 0, 0, 0], dtype='float')
         # obtain first state
@@ -845,11 +796,9 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
             ret, joint_angles[i] = vrep.simxGetJointPosition(self.client_ID, self.joint_handles[i], vrep.simx_opmode_buffer)
             while ret != vrep.simx_return_ok:
                 ret, joint_angles[i] = vrep.simxGetJointPosition(self.client_ID, self.joint_handles[i], vrep.simx_opmode_buffer)
-        #print("PARENT 2")
         ret, gripper_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, gripper_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_buffer)
-        #print("PARENT 3")
         ret, gripper_orient = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, gripper_orient = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1, vrep.simx_opmode_buffer)
@@ -858,7 +807,6 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
 
         # spots to gripper vec
         # NOTE: clipped
-        #print("PARENT 4")
         ret, spot_bot_pos = vrep.simxGetObjectPosition(self.client_ID, self.spot_bot_handle, -1, vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, spot_bot_pos = vrep.simxGetObjectPosition(self.client_ID, self.spot_bot_handle, -1, vrep.simx_opmode_buffer)
@@ -882,7 +830,6 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
 
         # target spots to spots vec
         # NOTE: clipped
-        #print("PARENT 5")
         ret, tg_spot_bot_pos = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_bot_handle, -1, vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, tg_spot_bot_pos = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_bot_handle, -1, vrep.simx_opmode_buffer)
@@ -898,7 +845,6 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
             ret, tg_spot_r_pos = vrep.simxGetObjectPosition(self.client_ID, self.tg_spot_r_handle, -1, vrep.simx_opmode_buffer)
         tg_spot_r_pos = np.array(tg_spot_r_pos)
 
-        #print("PARENT 6")
         tg_spot_bot_vec = np.clip(tg_spot_bot_pos - spot_bot_pos, lo, hi)
         tg_spot_l_vec = np.clip(tg_spot_l_pos - spot_l_pos, lo, hi)
         tg_spot_r_vec = np.clip(tg_spot_r_pos - spot_r_pos, lo, hi)
@@ -907,23 +853,19 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
         gripper_joint_vel = np.array([0.0, 0.0], dtype='float')
         gripper_joint_angles = np.array([0.0, 0.0], dtype='float')
 
-        #print("GET CURRENT STATE3")
         ret, gripper_joint_vel[0] = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f1_handle, 2012,
                 vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, gripper_joint_vel[0] = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f1_handle, 2012,
                     vrep.simx_opmode_buffer)
-        #print("GET CURRENT STATE4")
         ret, gripper_joint_vel[1] = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f2_handle, 2012,
                 vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, gripper_joint_vel[1] = vrep.simxGetObjectFloatParameter(self.client_ID, self.gripper_f2_handle, 2012,
                     vrep.simx_opmode_buffer)
-        #print("GET CURRENT STATE5")
         ret, gripper_joint_angles[0] = vrep.simxGetJointPosition(self.client_ID, self.gripper_f1_handle, vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, gripper_joint_angles[0] = vrep.simxGetJointPosition(self.client_ID, self.gripper_f1_handle, vrep.simx_opmode_buffer)
-        #print("GET CURRENT STATE6")
         ret, gripper_joint_angles[1] = vrep.simxGetJointPosition(self.client_ID, self.gripper_f2_handle, vrep.simx_opmode_buffer)
         while ret != vrep.simx_return_ok:
             ret, gripper_joint_angles[1] = vrep.simxGetJointPosition(self.client_ID, self.gripper_f2_handle, vrep.simx_opmode_buffer)
@@ -1057,8 +999,6 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
                 #actions[i, :6] = current_vel - self.state[:6]
             else:
                 current_vel = self.state[:6] + actions[i, :6]
-            #print("Target vel")
-            #print(current_vel)
             vrep.simxPauseCommunication(self.client_ID, 1)
             for j in range(6):
                 # Cap at max velocity
@@ -1136,7 +1076,6 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
         tg_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 27:30] - goal[:, -3:]), axis=1))
         tg_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 30:33] - goal[:, -3:]), axis=1))
         tg_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 33:36] - goal[:, -3:]), axis=1))
-        #print("{}, {}, {}".format(tg_spot_bot_dist, tg_spot_l_dist, tg_spot_r_dist))
         gripper_spot_dist = np.mean([gripper_spot_bot_dist, gripper_spot_l_dist, gripper_spot_r_dist], axis=0)
         tg_spot_dist = np.mean([tg_spot_bot_dist, tg_spot_l_dist, tg_spot_r_dist], axis=0)
         reward = -(gripper_spot_dist + tg_spot_dist)
@@ -1177,12 +1116,6 @@ class VREPGraspTask7DoFEnvironment(VREPEnvironment):
         #tg_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 33:36] - goal[:, -3:]), axis=1))
         tg_spot = np.mean([state[:, 27:30], state[:, 30:33], state[:, 33:36]], axis=0)
         tg_spot_dist = np.sqrt(np.sum(np.square(tg_spot - goal[:, -3:]), axis=1))
-        #print("{}, {}, {}".format(tg_spot_bot_dist, tg_spot_l_dist, tg_spot_r_dist))
-        #print("reachedGoal")
-        #print(tg_spot_dist)
-        ##print(tg_spot_l_dist)
-        ##print(tg_spot_r_dist)
-        #print("reachedGoal---")
         min_dist = 0.06
         #return ((tg_spot_bot_dist <= min_dist) & (tg_spot_l_dist <= min_dist) & (tg_spot_r_dist <= min_dist)).squeeze()
         return (tg_spot_dist <= min_dist).squeeze()
@@ -1234,7 +1167,6 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPGraspTask7DoFEnvironment):
         gripper_spot_bot_dist = np.sqrt(np.sum(np.square(state[:, 18:21]), axis=1))
         gripper_spot_l_dist = np.sqrt(np.sum(np.square(state[:, 21:24]), axis=1))
         gripper_spot_r_dist = np.sqrt(np.sum(np.square(state[:, 24:27]), axis=1))
-        #print("{}, {}, {}".format(tg_spot_bot_dist, tg_spot_l_dist, tg_spot_r_dist))
         #min_dist = 0.15
 
         reward = np.zeros_like(gripper_spot_r_dist) - 0.2
@@ -1260,7 +1192,6 @@ class VREPGraspTask7DoFSparseRewardsEnvironment(VREPGraspTask7DoFEnvironment):
 class VREPGraspTask7DoFSparseRewardsIKEnvironment(VREPGraspTask7DoFSparseRewardsEnvironment):
     """
     Distance unit: m
-    Maximum distance between target and cuboid: 2m; this will affect the reward function for VREPPushTaskMultiStepRewardEnvironment
     """
     # Reset time in seconds
     action_space = Box((11,), (-999.0,), (999.0,))
@@ -1282,20 +1213,16 @@ class VREPGraspTask7DoFSparseRewardsIKEnvironment(VREPGraspTask7DoFSparseRewards
             Initiailise gripper tip target to be at the same pos and orient as the gripper
 
         """
-        #print(11)
         super()._initialiseScene()
-        #print(12)
         vrep.simxGetPingTime(self.client_ID)
         _, self._gripper_tt_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1,
                 vrep.simx_opmode_blocking)
         _, self._gripper_tt_orient = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1,
                 vrep.simx_opmode_blocking)
-        #print(13)
         vrep.simxPauseCommunication(self.client_ID, 1)
         ret = vrep.simxSetObjectPosition(self.client_ID, self.gripper_tt_handle, -1, self._gripper_tt_pos, vrep.simx_opmode_oneshot)
         ret = vrep.simxSetObjectOrientation(self.client_ID, self.gripper_tt_handle, -1, self._gripper_tt_orient, vrep.simx_opmode_oneshot)
         vrep.simxPauseCommunication(self.client_ID, 0)
-        #print(14)
 
     def step(self, actions):
         """
@@ -1364,25 +1291,18 @@ class VREPGraspTask7DoFSparseRewardsIKEnvironment(VREPGraspTask7DoFSparseRewards
             else:
                 # Real step
                 # Update gripper_tt pos and orients to current GRIPPER (NOT Gripper TT) pos and orient (for tt reset)
-                #print("step0")
                 _, self._gripper_tt_pos = vrep.simxGetObjectPosition(self.client_ID, self.gripper_handle, -1,
                         vrep.simx_opmode_buffer)
                 _, self._gripper_tt_orient = vrep.simxGetObjectOrientation(self.client_ID, self.gripper_handle, -1,
                         vrep.simx_opmode_buffer)
-                #print("step1")
                 vrep.simxSynchronousTrigger(self.client_ID)
-                #print("step11")
                 # make sure all commands are exeucted
                 vrep.simxGetPingTime(self.client_ID)
                 # obtain next state
-                #print("step12")
                 next_state = self.getCurrentState()
-                #print("step13")
                 next_states.append(next_state.reshape(1, -1))
                 # NOTE: actions is not relevant in calculating rewards
                 rewards.append(self.getRewards(self.state, actions[:, :7], next_state))
-                #print("step14")
-                #print("step2")
                 self._step += 1
                 self.state = np.copy(next_state)
                 if self._isDone():
@@ -1488,20 +1408,6 @@ def make(env_name, *args, **kwargs):
                 )
     elif env_name == "VREPPushTaskContact2":
         return VREPPushTaskEnvironment(
-                *args,
-                **kwargs,
-                init_joint_pos=[np.pi, 5.0, np.pi, np.pi+0.1, np.pi, 3.40],
-                init_cb_pos=[0.33, 0.35, 0.05],
-                init_cb_orient=[0., 0., 0.5],
-                init_tg_pos=[0.1, 0.7, 0.002],
-                )
-    elif env_name == "VREPPushTaskMultiStepReward":
-        return VREPPushTaskMultiStepRewardEnvironment(
-                *args,
-                **kwargs,
-                )
-    elif env_name == "VREPPushTaskMultiStepRewardContact2":
-        return VREPPushTaskMultiStepRewardEnvironment(
                 *args,
                 **kwargs,
                 init_joint_pos=[np.pi, 5.0, np.pi, np.pi+0.1, np.pi, 3.40],
